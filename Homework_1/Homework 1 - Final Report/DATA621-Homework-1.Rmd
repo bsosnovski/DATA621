@@ -1,0 +1,569 @@
+---
+title: "Predicting Total Wins Per Season in Major Leauge Baseball from Game Statistics"
+author: Daniel Brooks (daniel.brooks@spsmail.cuny.edu), Daniel Fanelli (daniel.fanelli@spsmail.cuny.edu),
+  Christopher Fenton (christopher.fenton@spsmail.cuny.edu), James Hamski (james.hamski@spsmail.cuny.edu),
+  Youqing Xiang (youqing.xiang@spsmail.cuny.edu)
+date: "6/19/2016"
+output:
+  pdf_document:
+    fig_caption: no
+    keep_tex: yes
+    number_sections: yes
+  html_document:
+    fig_caption: no
+    force_captions: yes
+    highlight: pygments
+    number_sections: yes
+    theme: cerulean
+csl: report_formatting.csl
+---
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+require(ggplot2)
+require(grid)
+require(gridExtra)
+require(dplyr)
+require(knitr)
+
+require(corrplot)
+require(caret)
+require(nortest)
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+train <- read.csv("moneyball-training-data.csv")
+evaluation <- read.csv("moneyball-evaluation-data.csv")
+
+train <- select(train, -INDEX)
+```
+# Introduction
+Baseballl is a sport that follows a sequence of pitches, at-bats, and innings where play is contained between discrete pitches. Unlike the more continuous play of soccer or basketball, this makes baseball conducive to gathering extensive data on individual and team performance.   
+
+In this report we attempt to model wins per season for Major League Baseball (MLB) teams (response variable). Our dataset includes 15 potential predictor variables, adjusted to reflect a standardized 162 game season, using MLB records from 1871 to 2006. 
+
+# Data Exploration
+
+## Response Variable
+Team Wins (TARGET_WINS) appears to be normally distributed with a slight left skew and a mean of 80.79, which is half of the total 162 game season.   
+```{r, echo=FALSE, fig.width=3, fig.height=3, cache=TRUE}
+ggplot(train, aes(x=TARGET_WINS)) + geom_density()
+```
+
+## Predictor Variables
+
+Most of the predictor variables appear to be approximately normally distributed. Interesesting results include:
+
+Homeruns (TEAM_BATTING_HR) appears to be multinomial. Because the dataset contains game results from 1871 to 2006, it includes time periods which are known to have influenced the occurance of homeruns, including "The Steriod Era" and the introduction of the designated hitter in the American League [Greenberg, N. 2016](https://www.washingtonpost.com/news/fancy-stats/wp/2016/03/07/the-perfect-storm-that-created-baseballs-biggest-home-run-surge-since-the-steroid-era/). Batting Strikeouts (TEAM_BATTING_STRIKEOUTS) also appears multinomial.  
+
+*Histograms indicating the distribution of each variable*    
+```{r, echo=FALSE, warning=FALSE, message=FALSE, eval=T, cache=TRUE}
+# TARGET_WINS dot plotted with each field:
+plt_TEAM_BATTING_H <- ggplot(train, aes(x=TEAM_BATTING_H)) + geom_density()
+plt_TEAM_BATTING_2B <- ggplot(train, aes(x=TEAM_BATTING_2B)) + geom_density()
+plt_TEAM_BATTING_3B <- ggplot(train, aes(x=TEAM_BATTING_3B)) + geom_density()
+plt_TEAM_BATTING_HR <- ggplot(train, aes(x=TEAM_BATTING_HR)) + geom_density()
+plt_TEAM_BATTING_BB <- ggplot(train, aes(x=TEAM_BATTING_BB)) + geom_density()
+plt_TEAM_BATTING_HBP <- ggplot(train, aes(x=TEAM_BATTING_HBP)) + geom_density()
+plt_TEAM_BATTING_SO <- ggplot(train, aes(x=TEAM_BATTING_SO)) + geom_density()
+plt_TEAM_BASERUN_SB <- ggplot(train, aes(x=TEAM_BASERUN_SB)) + geom_density()
+plt_TEAM_BASERUN_CS <- ggplot(train, aes(x=TEAM_BASERUN_CS)) + geom_density()
+plt_TEAM_FIELDING_E <- ggplot(train, aes(x=TEAM_FIELDING_E)) + geom_density()
+plt_TEAM_FIELDING_DP <- ggplot(train, aes(x=TEAM_FIELDING_DP)) + geom_density()
+plt_TEAM_PITCHING_BB <- ggplot(train, aes(x=TEAM_PITCHING_BB)) + geom_density()
+plt_TEAM_PITCHING_H <- ggplot(train, aes(x=TEAM_PITCHING_H)) + geom_density()
+plt_TEAM_PITCHING_HR <- ggplot(train, aes(x=TEAM_PITCHING_HR)) + geom_density()
+plt_TEAM_PITCHING_SO <- ggplot(train, aes(x=TEAM_PITCHING_SO)) + geom_density()
+
+grid.arrange(plt_TEAM_BATTING_H, plt_TEAM_BATTING_2B, plt_TEAM_BATTING_3B, plt_TEAM_BATTING_HR, plt_TEAM_BATTING_BB, plt_TEAM_BATTING_HBP, plt_TEAM_BATTING_SO, plt_TEAM_BASERUN_SB, plt_TEAM_BASERUN_CS, plt_TEAM_FIELDING_E, plt_TEAM_FIELDING_DP, plt_TEAM_PITCHING_BB, plt_TEAM_PITCHING_H, plt_TEAM_PITCHING_HR, plt_TEAM_PITCHING_SO,   ncol = 3, nrow = 5)
+```
+
+
+The only variables which appear to be positively correlated with Team Wins over their entire range are Hits by Batters (TEAM_BATTING_H) and Doubles by Batters (TEAM_BATTING_2B). Errors (TEAM_FIELDING_E) is negatively correlated with wins at it's larger values. For the rest of the predictor variables, a smoothed conditional mean indicates a trend when plotted against Team Wins only at extreme high or low values where data points are sparse, or no trend at all.  
+
+*Predictor variables plotted versus Team Wins, including a smoothed conditional mean*  
+```{r, echo=FALSE, warning=FALSE, message=FALSE, eval=T, cache=TRUE}
+# TARGET_WINS dot plotted with each field:
+plt_TEAM_BATTING_H <- ggplot(train, aes(x=TEAM_BATTING_H, y=TARGET_WINS)) + geom_point() + geom_smooth() + ylab("WINS")
+plt_TEAM_BATTING_2B <- ggplot(train, aes(x=TEAM_BATTING_2B, y=TARGET_WINS)) + geom_point() + geom_smooth() + ylab("WINS")
+plt_TEAM_BATTING_3B <- ggplot(train, aes(x=TEAM_BATTING_3B, y=TARGET_WINS)) + geom_point() + geom_smooth() + ylab("WINS")
+plt_TEAM_BATTING_HR <- ggplot(train, aes(x=TEAM_BATTING_HR, y=TARGET_WINS)) + geom_point() + geom_smooth() + ylab("WINS")
+plt_TEAM_BATTING_BB <- ggplot(train, aes(x=TEAM_BATTING_BB, y=TARGET_WINS)) + geom_point() + geom_smooth() + ylab("WINS")
+plt_TEAM_BATTING_HBP <- ggplot(train, aes(x=TEAM_BATTING_HBP, y=TARGET_WINS)) + geom_point() + geom_smooth() + ylab("WINS")
+plt_TEAM_BATTING_SO <- ggplot(train, aes(x=TEAM_BATTING_SO, y=TARGET_WINS)) + geom_point() + geom_smooth() + ylab("WINS")
+plt_TEAM_BASERUN_SB <- ggplot(train, aes(x=TEAM_BASERUN_SB, y=TARGET_WINS)) + geom_point() + geom_smooth() + ylab("WINS")
+plt_TEAM_BASERUN_CS <- ggplot(train, aes(x=TEAM_BASERUN_CS, y=TARGET_WINS)) + geom_point() + geom_smooth() + ylab("WINS")
+plt_TEAM_FIELDING_E <- ggplot(train, aes(x=TEAM_FIELDING_E, y=TARGET_WINS)) + geom_point() + geom_smooth() + ylab("WINS")
+plt_TEAM_FIELDING_DP <- ggplot(train, aes(x=TEAM_FIELDING_DP, y=TARGET_WINS)) + geom_point() + geom_smooth() + ylab("WINS")
+plt_TEAM_PITCHING_BB <- ggplot(train, aes(x=TEAM_PITCHING_BB, y=TARGET_WINS)) + geom_point() + geom_smooth() + ylab("WINS")
+plt_TEAM_PITCHING_H <- ggplot(train, aes(x=TEAM_PITCHING_H, y=TARGET_WINS)) + geom_point() + geom_smooth() + ylab("WINS")
+plt_TEAM_PITCHING_HR <- ggplot(train, aes(x=TEAM_PITCHING_HR, y=TARGET_WINS)) + geom_point() + geom_smooth() + ylab("WINS")
+plt_TEAM_PITCHING_SO <- ggplot(train, aes(x=TEAM_PITCHING_SO, y=TARGET_WINS)) + geom_point() + geom_smooth() + ylab("WINS")
+
+
+grid.arrange(plt_TEAM_BATTING_H, plt_TEAM_BATTING_2B, plt_TEAM_BATTING_3B, plt_TEAM_BATTING_HR, plt_TEAM_BATTING_BB, plt_TEAM_BATTING_HBP, plt_TEAM_BATTING_SO, plt_TEAM_BASERUN_SB, plt_TEAM_BASERUN_CS, plt_TEAM_FIELDING_E, plt_TEAM_FIELDING_DP, plt_TEAM_PITCHING_BB, plt_TEAM_PITCHING_H, plt_TEAM_PITCHING_HR, plt_TEAM_PITCHING_SO,   ncol = 3, nrow = 5)
+```
+
+
+# Data Preparation
+
+## Outliers and Non-sensical Values  
+
+The histograms and scatterplots above indicate a few variables which have outliers or non-sensical values.   
+
+#### Base Hits by Batters, Doubles, Triples, Homeruns  
+
+No changes made.  
+
+#### Strikeouts by Batters   
+Several 0 values were replaced with NAs, as it is virtually impossible to make it through an entire season with zero strike outs. The next low value (66) indicates 0 is missing data in this variable.  
+
+```{r, echo=FALSE}
+train$TEAM_BATTING_SO[train$TEAM_BATTING_SO == 0] <- NA
+```
+
+#### Hit by Pitch   
+See **Missing Data** section below.    
+
+#### Strikeout by Batters, Stolen bases, Caught Stealing, Errors, Double Plays 
+
+No changes made.  
+
+#### Errors, Walks Allowed, Strikeouts by Pitchers    
+Two outlier values for TEAM_PITCHING_SO are higher than the total number of out during a season excluding extra innings (4,374). In addition, these series tended to have unreasonably long right skewed tails. Therefore, high outliers, as defnited by three standard deviations from the mean, were replaced with NAs.  
+
+```{r, echo=FALSE}
+train$TEAM_FIELDING_E[train$TEAM_FIELDING_E > (sd(train$TEAM_FIELDING_E, na.rm=T)*3 + mean(train$TEAM_FIELDING_E))] <- NA
+train$TEAM_PITCHING_BB[train$TEAM_PITCHING_BB > (sd(train$TEAM_PITCHING_BB, na.rm=T)*3 + mean(train$TEAM_PITCHING_BB))] <- NA
+train$TEAM_PITCHING_SO[train$TEAM_PITCHING_SO > (sd(train$TEAM_PITCHING_SO, na.rm=T)*3 + mean(train$TEAM_PITCHING_SO, na.rm=T))] <- NA
+```
+
+#### Hits Allowed
+We would expect the maximum Hits Allowed (TEAM_PITCHING_H) to be on par with the maximum Hits by Batters (TEAM_BATTING_H). However, Hits allowed has many values that are thousands higher than Hits by Batters. Therefore, Hits Allowed greater than the maximum Hits by Batters were replaced with NAs. 
+```{r, echo=FALSE}
+train$TEAM_PITCHING_H[train$TEAM_PITCHING_H > max(train$TEAM_BATTING_H)] <- NA
+```
+
+```{r, echo=FALSE}
+train <- select(train, -TEAM_BATTING_HBP)
+```
+
+## Multicollinearity  
+One of the challenges of this dataset is the existence of variables that are by-definition correlated. For a complete dataset for the variables here, for all teams in MLB, several variables will have common sums. Dy definition: for every one Hit by Batters there will be one Hit Allowed. This is the case for: Hits (singles through homeruns), strikeouts and walks. Teams tend to play within their leauge (American Leauge / National Leauge) and within their division frequently. This is perhaps an explanation for the existence of collinearity in the dataset.    
+  
+In addition, some variables are indicators of frequency attempted. Caught stealing and stolen bases are highly correlated by team. They're also correlated by individual player - Ricky Henderson holds the MLB record for stolen bases at 1,406 - but he also holds the record for most times caught stealing, at 335.
+```{r, echo=FALSE, warning=FALSE, fig.height=3, fig.width=3, cache=TRUE}
+ggplot(train, aes(x = TEAM_BASERUN_SB, y = TEAM_BASERUN_CS)) + geom_point(aes(alpha=0.25)) + geom_smooth()
+```
+
+
+*Correlation plot for the indicator and all predictor variables*  
+```{r, echo=FALSE}
+#correlation table
+cor.table <- cor(train, use = "pairwise.complete.obs")
+corrplot(cor.table, diag = FALSE, number.font = 9, type="lower")
+```
+
+## Missing Data  
+
+In statistical analysis, it is important remain mindful of context and not ignore the mechanics of the system being studied. Hit-by-Pitch is missing 2085 records - 90% of the dataset. This variable was dropped completely from the dataset and ignored by future analysis for two reasons (1) the vast majority of records were missing and (2) hit-by-pitch is a random event that happens to a team (a team cannot be 'good at being hit by pitches'), therefore it is not expected to be an indicator of total wins.  
+
+The next highest missing value is Caught Stealing, with 33% of the records missing. We decided to test out two different approaches for handling missing data. One was to impute missing values based on the existing values, while the other approach ignored all incomplete records by keeping NAs intact.  
+
+### Dealing with NAs - Imputing from Probability Distributions  
+
+Several variables have missing values (NAs), either from the original dataset or from the elimination of outliers.  
+```{r, echo=FALSE}
+na.count <- NULL
+for(i in 1:ncol(train)){
+  na.count <- c(na.count, sum(is.na(train[,i])))
+}
+na.table <- cbind(colnames(train), na.count)
+kable(na.table )
+```
+
+For predictor variables with missing data we imputed values by sampling from a normal distribution parameterized by the present data for that variable.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+train.fill.nas <- train
+
+### 2.2 TEAM_BASERUN_CS
+train.fill.nas$TEAM_BASERUN_CS[is.na(train.fill.nas$TEAM_BASERUN_CS)] <- sample(train.fill.nas$TEAM_BASERUN_CS[!is.na(train.fill.nas$TEAM_BASERUN_CS)],sum(is.na(train.fill.nas$TEAM_BASERUN_CS)),replace=F)
+
+### 2.3 TEAM_BATTING_SO
+
+
+# Check normal distribution
+TEAM_BATTING_SO <- train.fill.nas$TEAM_BATTING_SO
+TEAM_BATTING_SO <- TEAM_BATTING_SO[!is.na(TEAM_BATTING_SO)]
+#hist(TEAM_BATTING_SO)
+#qqnorm(TEAM_BATTING_SO)
+#length(TEAM_BATTING_SO)
+#shapiro.test(TEAM_BATTING_SO)
+
+#ad.test(TEAM_BATTING_SO)
+
+# Sampling method to replace NA's
+train.fill.nas$TEAM_BATTING_SO[is.na(train.fill.nas$TEAM_BATTING_SO)] <- sample(train.fill.nas$TEAM_BATTING_SO[!is.na(train.fill.nas$TEAM_BATTING_SO)],sum(is.na(train.fill.nas$TEAM_BATTING_SO)),replace=F)
+
+### 2.4 TEAM_BASERUN_SB
+# Sampling the value from column
+train.fill.nas$TEAM_BASERUN_SB[is.na(train.fill.nas$TEAM_BASERUN_SB)] <- sample(train.fill.nas$TEAM_BASERUN_SB[!is.na(train.fill.nas$TEAM_BASERUN_SB)],sum(is.na(train.fill.nas$TEAM_BASERUN_SB)),replace=F)
+
+### 2.5 TEAM_PITCHING_SO
+# Sampling the value from column
+train.fill.nas$TEAM_PITCHING_SO[is.na(train.fill.nas$TEAM_PITCHING_SO)] <- sample(train.fill.nas$TEAM_PITCHING_SO[!is.na(train.fill.nas$TEAM_PITCHING_SO)],sum(is.na(train.fill.nas$TEAM_PITCHING_SO)),replace=F)
+
+### 2.6 TEAM_FIELDING_DP
+# Check normal distribution
+TEAM_FIELDING_DP <- train.fill.nas$TEAM_FIELDING_DP
+TEAM_FIELDING_DP <- TEAM_FIELDING_DP[!is.na(TEAM_FIELDING_DP)]
+#hist(TEAM_FIELDING_DP)
+#qqnorm(TEAM_FIELDING_DP)
+#length(TEAM_FIELDING_DP)
+#shapiro.test(TEAM_FIELDING_DP)
+
+#ad.test(TEAM_FIELDING_DP)
+
+# Sampling the value from column
+train.fill.nas$TEAM_FIELDING_DP[is.na(train.fill.nas$TEAM_FIELDING_DP)] <- sample(train.fill.nas$TEAM_FIELDING_DP[!is.na(train.fill.nas$TEAM_FIELDING_DP)],sum(is.na(train.fill.nas$TEAM_FIELDING_DP)),replace=F)
+
+#Pitching - Hits
+
+train.fill.nas$TEAM_PITCHING_H[is.na(train.fill.nas$TEAM_PITCHING_H)] <- sample(train.fill.nas$TEAM_PITCHING_H[!is.na(train.fill.nas$TEAM_PITCHING_H)],sum(is.na(train.fill.nas$TEAM_PITCHING_H)),replace=F)
+
+# Pitching - BB
+train.fill.nas$TEAM_PITCHING_BB[is.na(train.fill.nas$TEAM_PITCHING_BB)] <- sample(train.fill.nas$TEAM_PITCHING_BB[!is.na(train.fill.nas$TEAM_PITCHING_BB)],sum(is.na(train.fill.nas$TEAM_PITCHING_BB)),replace=F)
+
+# Fielding Errors
+train.fill.nas$TEAM_FIELDING_E[is.na(train.fill.nas$TEAM_FIELDING_E)] <- sample(train.fill.nas$TEAM_FIELDING_E[!is.na(train.fill.nas$TEAM_FIELDING_E)],sum(is.na(train.fill.nas$TEAM_FIELDING_E)),replace=F)
+
+```
+
+
+#### Dealing with NAs - Eliminating non-complete cases (ignoring them)  
+
+In addition to imputing data, we built one model with both imputed missing data and only complete data. The rationale for ignoring all but complete records was that we wanted to create derived values and thought it better to avoid the complexities introduced by imputation (any incorrect imputation assumptions would be compounded by their use in a derived value). In the models used in the *Modeling* section below, using complete cases resulted in more reasonable models than the imputed dataset.
+
+```{r, echo=FALSE}
+train.with.caught.stealing <- train
+train <- select(train, -TEAM_BASERUN_CS)
+```
+
+
+## Calculating Base Hits
+
+The column recording Hits by Batters (TEAM_BATTING_H) was flagged as being a potential source of unidentifiablility, because it is composed of the sum of three additional columns: Doubles by Batters (TEAM_BATTING_2B), Triples by Batters (TEAM_BATTING_3B), and Homeruns by Batters(TEAM_BATTING_HR). While Hits by Batters may be have utility in modeling wins on its own, we determined it should not be combined in a model with doubles, triples, and homeruns. Therefore, we subtracted doubles, triples, and home runs from Hits by Batters to create Singles by Batters (TEAM_BATTING_1B).   
+
+Likewise, Hits Allowed was broken into Singles, Doubles and Triples as one variable "TEAM_PITCHING_NON_HR" by subtracting Homeruns Allowed. 
+
+```{r, echo=FALSE}
+# go with 1b instead of "hits"
+train$TEAM_BATTING_1B <- (train$TEAM_BATTING_H -(train$TEAM_BATTING_2B + train$TEAM_BATTING_3B + train$TEAM_BATTING_HR))
+# re-order it:
+train <- train[c(ncol(train),2:ncol(train)-1)]
+
+# go with 1_2_3b instead of "hits"
+train$TEAM_PITCHING_NON_HR <- (train$TEAM_PITCHING_H - train$TEAM_PITCHING_HR)
+train$TEAM_PITCHING_H <- NULL
+
+# re-order it:
+train <- train[c(ncol(train),2:ncol(train)-1)]
+#colnames(train)
+```
+
+```{r, echo=FALSE}
+# Again for NA fill
+
+train.fill.nas$TEAM_BATTING_1B <- (train.fill.nas$TEAM_BATTING_H -(train.fill.nas$TEAM_BATTING_2B + train.fill.nas$TEAM_BATTING_3B + train.fill.nas$TEAM_BATTING_HR))
+train.fill.nas <- train.fill.nas[c(ncol(train.fill.nas),2:ncol(train.fill.nas)-1)]
+
+train.fill.nas$TEAM_PITCHING_NON_HR <- (train.fill.nas$TEAM_PITCHING_H - train.fill.nas$TEAM_PITCHING_HR)
+train.fill.nas$TEAM_PITCHING_H <- NULL
+
+train.fill.nas <- train.fill.nas[c(ncol(train.fill.nas),2:ncol(train.fill.nas)-1)]
+```
+
+*Histograms indicating the distribution of each variable after data cleaning*  
+```{r, echo=FALSE, warning=FALSE, message=FALSE, cache=TRUE}
+# TARGET_WINS dot plotted with each field:
+plt_TEAM_BATTING_1B <- ggplot(train, aes(x=TEAM_BATTING_1B)) + geom_density()
+plt_TEAM_BATTING_2B <- ggplot(train, aes(x=TEAM_BATTING_2B)) + geom_density()
+plt_TEAM_BATTING_3B <- ggplot(train, aes(x=TEAM_BATTING_3B)) + geom_density()
+plt_TEAM_BATTING_HR <- ggplot(train, aes(x=TEAM_BATTING_HR)) + geom_density()
+plt_TEAM_BATTING_BB <- ggplot(train, aes(x=TEAM_BATTING_BB)) + geom_density()
+plt_TEAM_BATTING_SO <- ggplot(train, aes(x=TEAM_BATTING_SO)) + geom_density()
+plt_TEAM_BASERUN_SB <- ggplot(train, aes(x=TEAM_BASERUN_SB)) + geom_density()
+plt_TEAM_BASERUN_CS <- ggplot(train, aes(x=TEAM_BASERUN_CS)) + geom_density()
+plt_TEAM_FIELDING_E <- ggplot(train, aes(x=TEAM_FIELDING_E)) + geom_density()
+plt_TEAM_FIELDING_DP <- ggplot(train, aes(x=TEAM_FIELDING_DP)) + geom_density()
+plt_TEAM_PITCHING_BB <- ggplot(train, aes(x=TEAM_PITCHING_BB)) + geom_density()
+plt_TEAM_PITCHING_NON_HR <- ggplot(train, aes(x=TEAM_PITCHING_NON_HR)) + geom_density()
+plt_TEAM_PITCHING_HR <- ggplot(train, aes(x=TEAM_PITCHING_HR)) + geom_density()
+plt_TEAM_PITCHING_SO <- ggplot(train, aes(x=TEAM_PITCHING_SO)) + geom_density()
+
+grid.arrange(plt_TEAM_BATTING_1B, plt_TEAM_BATTING_2B, plt_TEAM_BATTING_3B, plt_TEAM_BATTING_HR, plt_TEAM_BATTING_BB, plt_TEAM_BATTING_SO, plt_TEAM_BASERUN_SB, plt_TEAM_FIELDING_E, plt_TEAM_FIELDING_DP, plt_TEAM_PITCHING_BB, plt_TEAM_PITCHING_NON_HR, plt_TEAM_PITCHING_HR, plt_TEAM_PITCHING_SO,   ncol = 3, nrow = 5)
+```
+
+
+```{r, echo=FALSE}
+#reorder dataframe
+
+
+train <- train[c("TARGET_WINS", "TEAM_BATTING_1B", "TEAM_BATTING_2B", "TEAM_BATTING_3B",  "TEAM_BATTING_HR", "TEAM_BATTING_BB", "TEAM_BATTING_SO", "TEAM_BASERUN_SB", "TEAM_PITCHING_NON_HR", "TEAM_PITCHING_HR", "TEAM_PITCHING_BB", "TEAM_PITCHING_SO", "TEAM_FIELDING_E", "TEAM_FIELDING_DP")]
+
+train.fill.nas <- train.fill.nas[c("TARGET_WINS", "TEAM_BATTING_1B", "TEAM_BATTING_2B", "TEAM_BATTING_3B",  "TEAM_BATTING_HR", "TEAM_BATTING_BB", "TEAM_BATTING_SO", "TEAM_BASERUN_SB", "TEAM_BASERUN_CS", "TEAM_PITCHING_NON_HR", "TEAM_PITCHING_HR", "TEAM_PITCHING_BB", "TEAM_PITCHING_SO", "TEAM_FIELDING_E", "TEAM_FIELDING_DP")]
+
+```
+
+
+# Build Models  
+
+## Model 1: Backwards Selection - NAs in dataset 
+
+For our first model, we used backward selection. In this method we calculate the linear model starting with all predictor variables, then remove the value with the highest P value until we have no signficance values greater than 0.05. 
+
+The model that results from backward selection on complete data only is: 
+
+$$Team Wins = 60.5 - 0.031singles - 0.080doubles + 0.152triples + 0.129homeruns + 0.151strikeouts.batting + $$  
+$$ 0.070stolen.bases + 0.057pitching-non-homeruns - 0.111pitching.walks - $$  
+$$ 0.022pitching.strikeouts - 0.119errors - 0.113double.plays$$
+
+Several of these coefficients indicate a relationship with wins that does not make sense. For instance, the coefficients for single and doubles are both negative. Strikeouts while batting is positive. We decided to keep this model despite these results because, while it may be assumed that more singles and doubles should indicate a better team and more wins, it also says something about the pitching they faced. It may be that the model is influenced by seasons where weak pitching resulted in many hits that didn't correspond to more wins - just higher scoring games. Without the ability to adjust these metrics by 'at bats' (which is used for batter averages) we cannot improve on this aspect of the model. 
+```{r, echo=FALSE}
+#Backwards Selection - removing the least-significant variable each time
+lm1_a <- lm(TARGET_WINS ~ ., data=train)
+lm1_a <- update(lm1_a,  .~. - TEAM_PITCHING_HR)
+lm1_a <- update(lm1_a,  .~. - TEAM_BATTING_SO)
+```
+
+```{r, echo=FALSE}
+lm.backwards.remove.one <- lm(TARGET_WINS ~ TARGET_WINS + TEAM_BATTING_1B + TEAM_BATTING_2B + TEAM_BATTING_3B + TEAM_BATTING_HR + TEAM_BATTING_BB + TEAM_BASERUN_SB + TEAM_PITCHING_NON_HR + TEAM_PITCHING_BB + TEAM_PITCHING_SO + TEAM_FIELDING_E + TEAM_FIELDING_DP, data = train)
+summary(lm.backwards.remove.one)
+```
+
+Residual plots from Model 1 indicate a random distribution of residuals, with some deviations at extreme values.   
+```{r, echo=FALSE, fig.width=3, fig.height=3}
+plot(fitted(lm1_a), residuals(lm1_a), xlab = "Fitted", ylab = "Residuals")  
+abline(h = 0)
+qqnorm(residuals(lm1_a))  
+qqline(residuals(lm1_a))
+```
+
+## Model 1: Backwards Selection - Using imputed values dataset (no NAs)
+
+When using the dataset with imputed NA values, all variables are signficant. 
+```{r, echo=FALSE}
+#Backwards Selection - removing the least-significant variable each time
+lm1_b <- lm(TARGET_WINS ~ ., data=train.fill.nas)
+summary(lm1_b)
+```
+
+
+
+
+## Model 2:
+
+For this model, we take advantage of principal component analysis method. First, we used an orthogonal transformation to convert our variables into a set of values of linearly uncorrelated variables, which called principal components. And then we chose the first five principal components that account for around 95% proportion of variance in the data. Finally, we used those chosen principal components to build a linear regression model. 
+
+```{r}
+# PCA analysis
+Predictor <- train.fill.nas$TARGET_WINS
+A <- as.matrix(select(train.fill.nas,-TARGET_WINS))
+pca <- princomp(A,center=T,scale.=T)
+plot(pca)
+summary(pca)
+pca <- as.data.frame(pca$scores[,1:5])
+train_pca <- cbind(TARGET_WINS=Predictor,pca)
+head(train_pca)
+
+# Separate data into two parts, one for training models and the other for testing models
+set.seed(45)
+inTrain_pca <- createDataPartition(y=train_pca$TARGET_WINS, p=0.7,list=FALSE)
+training_pca <- train_pca[inTrain_pca,]
+testing_pca <- train_pca[-inTrain_pca,]
+
+# Build a model
+lm2_a <- lm(TARGET_WINS ~ ., data=training_pca)
+summary(lm2_a)
+```
+
+
+
+## Model 3: Using Variable Ratios 
+
+As discussed above, several variables display collinearity. Some variables by definition have the same sum (for every one batting walk, another team has a pitching walk) and some variables indicate a hidden variable (stolen bases and caught stealing appear to indicate stolen base attempts). Therefore, we used several ratios among predictor variables. 
+
+## Deriving Ratio Variables
+
+One area of interest was whether or not variables relative to another relevant variable would prove to be a better predictor than the raw data on its own. To test this out, we created 3 ratio variables: Stolen base percentage, HR to Strikout (batting) percentage, and Strikeout to Walk (pitching, otherwise known as K/BB) percentage. These ratios were calculated from the dataset that ignored records with missing values (discussed later).
+
+Stolen base percentage measured stolen bases over stolen bases plus caught stealing, which would constitue total stolen base attempts. Plotting the graphs of stolen bases against wins and comparing to stolen base percentage against wins showed that the percentage had a slightly positive linear relationship with wins. Stolen bases did have a positive correlation with wins (.1203), but the percentage had a stronger relationship (.172). Due to the stronger and more linear relationship, we will use the percentage over stolen bases. 
+
+```{r, eval=TRUE, echo=FALSE}
+cmlb <- read.csv("moneyball-training-data.csv")
+
+cmlb <- subset(cmlb, !is.na(cmlb$TEAM_BASERUN_SB) & 
+                    !is.na(cmlb$TEAM_BASERUN_CS) & 
+                    !is.na(cmlb$TEAM_BATTING_SO) & 
+                    !is.na(cmlb$TEAM_PITCHING_SO) & 
+                    !is.na(cmlb$TEAM_FIELDING_DP) )
+
+
+#add stolen base pct
+cmlb$TEAM_BASERUN_SB_PCT <- cmlb$TEAM_BASERUN_SB / (cmlb$TEAM_BASERUN_SB + 
+                                                      cmlb$TEAM_BASERUN_CS)
+
+#compare Stolen Base pct to raw stolen bases
+#summary(lm(TARGET_WINS ~ TEAM_BASERUN_SB_PCT, data=cmlb))
+#summary(lm(TARGET_WINS ~ TEAM_BASERUN_SB, data=cmlb))
+plot(cmlb$TEAM_BASERUN_SB, cmlb$TARGET_WINS)
+plot(cmlb$TEAM_BASERUN_SB_PCT, cmlb$TARGET_WINS)
+```
+
+HR to Strikout percentage was derived because batting HRs and Strikeouts had a correlation of .6402. Thus perhaps more valuable than knowing the gross amounts of either variable would be the ratio of one to the other. And it did appear graphically that there was a stronger linear relationship using the HR to Strikout ratio than simply HRs. The homerun to strikeout percentage was more highly correlated with wins (.419) than homeruns (.2834), so we will use Home Run to Strikeout percenatage in our model.
+
+```{r, eval=TRUE, echo=FALSE}
+#add HR to Strikeout pct
+
+cmlb$TEAM_BATTING_HR_TO_SO <- cmlb$TEAM_BATTING_HR / cmlb$TEAM_BATTING_SO
+
+
+#compare HR/SO pct to raw HRs
+
+#summary(lm(TARGET_WINS ~ TEAM_BATTING_HR_TO_SO, data=cmlb))
+#summary(lm(TARGET_WINS ~ TEAM_BATTING_HR, data=cmlb))
+
+plot(cmlb$TEAM_BATTING_HR_TO_SO, cmlb$TARGET_WINS)
+plot(cmlb$TEAM_BATTING_HR, cmlb$TARGET_WINS)
+```
+
+
+For pitching, Strikeout to Walk (K/BB) Ratio was calculated. [This is a traditional baseball statistic that has currently come under scrutiny with the modernization of baseball analysis.](http://www.beyondtheboxscore.com/2012/11/25/3686732/stop-using-k-bb) With that in mind we thought it would be of interest to see what kind of impact including this variable would have on a model.   
+
+Counterintuitively, both Strikouts and K/BB showed negative correlations with wins (-.067 and -0.2312). Since strikouts are generally a good thing for the pitching team, and walks are generally bad, this is a surprising finding. One would think that maximizing the ratio of good events to bad events would ultimately lead to more wins, but this decidedly not the case. Further investigation into this matter would be of interest, but is beyond both the scope and the available data in this study.
+
+K/BB appeared to have a slightly more linear relationship visually, so this combined with it's higher correlation made in the factor that we chose for the ratio model.  
+```{r, eval=TRUE, echo=FALSE}
+#add StrikeOut to walk (K/BB) pct
+
+cmlb$TEAM_PITCHING_SO_TO_BB <- cmlb$TEAM_PITCHING_SO / cmlb$TEAM_PITCHING_BB
+
+
+#look at K/BB model
+
+#summary(lm(TARGET_WINS ~ TEAM_PITCHING_SO_TO_BB, data = cmlb))
+plot(cmlb$TEAM_PITCHING_SO_TO_BB, cmlb$TARGET_WINS)
+plot(cmlb$TEAM_PITCHING_SO, cmlb$TARGET_WINS)
+
+ratio_model <- lm(TARGET_WINS ~ TEAM_BASERUN_SB_PCT + TEAM_BATTING_HR_TO_SO+ TEAM_PITCHING_SO_TO_BB, data=cmlb)
+```
+
+In the end, the ratio model wound up being calculated as follows:
+
+Predicted_wins = 56.44 + 34.16(StolenBasePct) + 96.45(HR/SO) - 7.5(K/BB)
+  
+
+# Select Model: Evaluating The Models
+
+The below table shows the 3 models and their corresponding statistics for selecting an appropriate model:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+col_mdl_names <- c("lm1_a", "lm1_b", "ratio_model", "pca")
+
+#######################################################
+# Calculate mean squared errors for each model:
+#######################################################
+
+# http://stats.stackexchange.com/questions/107643/how-to-get-the-value-of-mean-squared-error-in-a-linear-regression-in-r
+mse <- function(sm) 
+    mean(sm$residuals^2)
+
+if(FALSE){
+  #cat("Mean Squared Error of lm1_a:")
+  mse(lm1_a)
+  cat("Mean Squared Error of lm1_b:")
+  mse(lm1_b)
+  cat("Mean Squared Error of ratio_model:")
+  mse(ratio_model)
+  cat("Mean Squared Error of PCA:")
+  mse(lm2_a)
+  # for pca????
+}
+
+col_mse <- c(mse(lm1_a),mse(lm1_b),mse(ratio_model),mse(lm2_a))
+
+#######################################################
+# Calculate R^2 for each model:
+#######################################################
+if(FALSE){
+  cat("R Squared of lm1_a:")
+  summary(lm1_a)$r.squared 
+  cat("R Squared of lm1_b:")
+  summary(lm1_b)$r.squared 
+  cat("R Squared of ratio_model")
+  summary(ratio_model)$r.squared 
+  cat("R Squared of PCA")
+  summary(lm2_a)$r.squared 
+}
+
+col_r_sq <- c(summary(lm1_a)$r.squared, summary(lm1_b)$r.squared, summary(ratio_model)$r.squared, summary(lm2_a)$r.squared)
+
+if(FALSE){
+  cat("F-Stat of lm1_a:")
+  summary(aov(lm1_a))[[1]]$F[1]
+  cat("F-Stat of lm1_b:")
+  summary(aov(lm1_b))[[1]]$F[1]
+  cat("F-Stat of ratio_model")
+  summary(aov(ratio_model))[[1]]$F[1]
+  cat("F-Stat of pca")
+  summary(aov(lm2_a))[[1]]$F[1]
+}
+
+col_f_stat <- c(summary(aov(lm1_a))[[1]]$F[1], summary(aov(lm1_b))[[1]]$F[1], summary(aov(ratio_model))[[1]]$F[1], summary(aov(lm2_a))[[1]]$F[1])
+
+
+summary_df <- data.frame(cbind(col_mdl_names, col_mse, col_r_sq, col_f_stat))
+
+colnames(summary_df) <- c("Model Name", "Mean Sq. Error", "R Squared", "F Stat")
+kable(summary_df)
+
+#######################################################
+# residual plots for each model:
+#######################################################
+
+par(mfrow=c(2,2))
+plot(lm1_a$residuals, title = "LM 1 Residuals")
+plot(lm1_b$residuals, title = "LM 2 Residuals")
+plot(ratio_model$residuals, title = "Ratio Model Residuals")
+plot(lm2_a$residuals, title = "PCA Residuals")
+```
+
+## References  
+
+=======
+
+### Predicted wins
+
+The first model fit, lm1_a, used backwards stepwise selection and the dataset containing NAs. It has the lowest mean square error, highest coefficient of determination and second highest F-Statistic. It's residuals do not indicate any red flags. Therefore, we have chosen it as our best model for predicting team wins.    
+
+Using the predict.lm() function, we use the first linear model created, lm1_a, to predict team wins from the evaluation dataset. This density plot of the wins output resembles the training data plot above. This is a good indication our model is reasonable.  
+```{r, echo=FALSE}
+# go with 1b instead of "hits"
+evaluation$TEAM_BATTING_1B <- (evaluation$TEAM_BATTING_H -(evaluation$TEAM_BATTING_2B + evaluation$TEAM_BATTING_3B + evaluation$TEAM_BATTING_HR))
+
+# go with 1_2_3b instead of "hits"
+evaluation$TEAM_PITCHING_NON_HR <- (evaluation$TEAM_PITCHING_H - evaluation$TEAM_PITCHING_HR)
+```
+
+```{r, echo=FALSE}
+predicted.wins <- predict.lm(lm1_a, newdata = evaluation)
+predicted.wins <- as.data.frame(predicted.wins)
+colnames(predicted.wins) <- "PredictedWins"
+
+ggplot(predicted.wins, aes(x = PredictedWins)) + geom_density()
+```
+
+```{r}
+write.csv(predicted.wins, file = "model_predicted_wins.csv")
+```
+

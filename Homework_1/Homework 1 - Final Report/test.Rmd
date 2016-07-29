@@ -1,0 +1,14 @@
+---
+title: "test"
+author: "Chris Fenton"
+date: "July 1, 2016"
+output: html_document
+---
+$\frac{(x_{i} - x_{min})}{(x_{max} - x_{min}) \times 100}$
+
+|znN |Target | Freq|
+|:---|:------|----:|
+|0   |0      |  125|
+|1   |0      |  112|
+|0   |1      |  214|
+|1   |1      |   15|

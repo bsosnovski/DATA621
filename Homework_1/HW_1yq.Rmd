@@ -1,0 +1,98 @@
+---
+title: "HW1_yx"
+author: "Youqing Xiang"
+date: "June 8, 2016"
+output: html_document
+---
+### 1.Load data
+
+```{r}
+library(ggplot2)
+eval <- read.csv("moneyball-evaluation-data.csv")
+train <- read.csv("moneyball-training-data.csv")
+summary(train)
+dim(train)
+```
+
+### 2. Deal with Missing data
+
+```{r}
+# Drop off column TEAM_BATTING_HBP because of too many missing data.
+train <- train[,-11]
+
+# Check the relationship between TARGET_WINS and TEAM_BASERUN_CS
+# If there is no obvious linear trend, drop off the column because of many missing data.
+ggplot(train, aes(x=TEAM_BASERUN_CS, y=TARGET_WINS)) + geom_point()
+```
+
+```{r}
+# Because I didn't see the linear trend, drop off TEAM_BASERUN_CS column.
+train <- train[,-10]
+
+# For the left missing data, replace with the mean of its column data
+train$TEAM_BATTING_SO[is.na(train$TEAM_BATTING_SO)] <- mean(train$TEAM_BATTING_SO, na.rm=TRUE)
+train$TEAM_BASERUN_SB[is.na(train$TEAM_BASERUN_SB)] <- mean(train$TEAM_BASERUN_SB, na.rm=TRUE)
+train$TEAM_PITCHING_SO[is.na(train$TEAM_PITCHING_SO)] <- mean(train$TEAM_PITCHING_SO, na.rm=TRUE)
+train$TEAM_FIELDING_DP[is.na(train$TEAM_FIELDING_DP)] <- mean(train$TEAM_FIELDING_DP, na.rm=TRUE)
+summary(train)
+dim(train)
+```
+
+### 3. Explore data
+
+```{r}
+library(psych)
+pairs.panels(train[,-1])
+```
+
+Based on the numbers, only keep the columns with abs(coefficiency) bigger than 0.1.
+
+```{r}
+train <- train[,-c(8,13,15)]
+summary(train)
+dim(train)
+pairs.panels(train[,-1])
+```
+
+See there is strong linear relationship between column 6 and 10. Use scatterplot to check and confirm. We should only keep one of these two columns in our model.
+
+```{r}
+ggplot(train, aes(x=TEAM_BATTING_HR, y=TEAM_PITCHING_HR)) + geom_point()
+cor(train$TEAM_BATTING_HR,train$TEAM_PITCHING_HR)
+```
+
+I confirm that there is strong linear trend between `TEAM_BATTING_HR` and `TEAM_PITCHING_HR`. So, I will try to keep `TEAM_BATTING_HR` first.
+
+```{r}
+train1 <- train[,-c(1,10)]
+```
+
+### 4. Build model
+
+```{r}
+m1 <- lm(TARGET_WINS ~ ., data=train1)
+summary(m1)
+```
+
+Based on the p value, drop off `TEAM_BATTING_BB`, `TEAM_PITCHING_H`, and build another model.
+
+```{r}
+m2 <- lm(TARGET_WINS ~ TEAM_BATTING_H + TEAM_BATTING_2B + TEAM_BATTING_3B + TEAM_BATTING_HR + TEAM_BASERUN_SB + TEAM_PITCHING_BB + TEAM_FIELDING_E, data=train1)
+summary(m2)
+```
+
+### 5. Evaluate model
+
+```{r}
+# Check the assumptions for building the model
+qqnorm(m2$residuals)
+qqline(m2$residuals)
+plot(m2$residuals ~ train$INDEX,
+     xlab='TARGET_WINS',
+     ylab='Residuals')
+abline(h=0,lty=3)
+hist(m2$residuals)
+
+# Predict the data
+```
+

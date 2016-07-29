@@ -1,0 +1,161 @@
+---
+title: "HW1_df"
+output: html_document
+date: "June 9, 2016"
+---
+
+## Load:
+
+```{r warning=FALSE, message=FALSE}
+library(knitr)
+library(ggplot2)
+
+train <- read.csv("moneyball-training-data.csv")
+eval <- read.csv("moneyball-evaluation-data.csv")
+kable(head(train))
+kable(head(eval))
+```
+
+## Get Rid of DEPENDENT hits cols (offense):
+
+```{r warning=FALSE, message=FALSE}
+train$TEAM_BATTING_1B <- (train$TEAM_BATTING_H -(train$TEAM_BATTING_2B + train$TEAM_BATTING_3B + train$TEAM_BATTING_HR))
+train$TEAM_BATTING_H <- NULL
+
+eval$TEAM_BATTING_1B <- (eval$TEAM_BATTING_H -(eval$TEAM_BATTING_2B + eval$TEAM_BATTING_3B + eval$TEAM_BATTING_HR))
+eval$TEAM_BATTING_H <- NULL
+
+kable(head(train))
+kable(head(eval))
+```
+
+# Go with 1_2_3b instead of "hits" (defense):
+
+```{r warning=FALSE, message=FALSE}
+train$TEAM_PITCHING_NON_HR <- (train$TEAM_PITCHING_H - train$TEAM_PITCHING_HR)
+train$TEAM_PITCHING_H <- NULL
+
+eval$TEAM_PITCHING_NON_HR <- (eval$TEAM_PITCHING_H - eval$TEAM_PITCHING_HR)
+eval$TEAM_PITCHING_H <- NULL
+
+kable(head(train))
+kable(head(eval))
+```
+
+# Get rid of HBP (91% n/a), or do some more analysis of it
+
+```{r warning=FALSE, message=FALSE}
+train$TEAM_BATTING_HBP <- NULL
+eval$TEAM_BATTING_HBP <- NULL
+```
+
+# THE MISSING VECTORS ARE NOT NORMALLY DISTRIBUTED:
+
+```{r warning=FALSE, message=FALSE}
+shapiro.test(rnorm(100, mean = 5, sd = 3))
+
+shapiro.test(train$TEAM_BATTING_SO)
+shapiro.test(train$TEAM_BASERUN_SB)
+shapiro.test(train$TEAM_BASERUN_CS)
+shapiro.test(train$TEAM_PITCHING_SO)
+shapiro.test(train$TEAM_FIELDING_DP)
+```
+
+# Replace NAs in columns with sample vals from that column
+
+```{r warning=FALSE, message=FALSE}
+train$TEAM_BATTING_SO[is.na(train$TEAM_BATTING_SO)] <- sample(train$TEAM_BATTING_SO[!is.na(train$TEAM_BATTING_SO)])
+train$TEAM_BASERUN_SB[is.na(train$TEAM_BASERUN_SB)] <- sample(train$TEAM_BASERUN_SB[!is.na(train$TEAM_BASERUN_SB)])
+train$TEAM_BASERUN_CS[is.na(train$TEAM_BASERUN_CS)] <- sample(train$TEAM_BASERUN_CS[!is.na(train$TEAM_BASERUN_CS)])
+train$TEAM_PITCHING_SO[is.na(train$TEAM_PITCHING_SO)] <- sample(train$TEAM_PITCHING_SO[!is.na(train$TEAM_PITCHING_SO)])
+train$TEAM_FIELDING_DP[is.na(train$TEAM_FIELDING_DP)] <- sample(train$TEAM_FIELDING_DP[!is.na(train$TEAM_FIELDING_DP)])
+```
+
+# Build Models:
+
+### Model 1) Just Keep all the cols that have "STARS" signifinace:
+
+```{r warning=FALSE, message=FALSE}
+lm_1 <- lm(TARGET_WINS ~ ., data = train)
+summary(lm_1)
+```
+
+##### the ones WITH STARS...
+
+```{r warning=FALSE, message=FALSE}
+lm_1 <- lm(TARGET_WINS ~ TEAM_BATTING_2B + TEAM_BATTING_3B + TEAM_BATTING_HR + TEAM_BASERUN_SB + TEAM_PITCHING_SO + TEAM_FIELDING_E + TEAM_FIELDING_DP + TEAM_BATTING_1B + TEAM_PITCHING_NON_HR, data = train)
+summary(lm_1)
+```
+
+##### TEAM_PITCHING_NON_HR no longer has a STAR, so remove it:
+
+```{r warning=FALSE, message=FALSE}
+lm_1 <- lm(TARGET_WINS ~ TEAM_BATTING_2B + TEAM_BATTING_3B + TEAM_BATTING_HR + TEAM_BASERUN_SB + TEAM_PITCHING_SO + TEAM_FIELDING_E + TEAM_FIELDING_DP + TEAM_BATTING_1B, data = train)
+summary(lm_1)
+```
+
+### Model 2) Forward Selection:
+
+```{r warning=FALSE, message=FALSE}
+library(MASS)
+lm_2 <- lm(TARGET_WINS ~ ., data = train)
+step <- stepAIC(lm_2, direction="forward")
+step$anova
+
+```
+
+### Model 3) Backward Selection:
+
+```{r warning=FALSE, message=FALSE}
+library(MASS)
+lm_3 <- lm(TARGET_WINS ~ ., data = train)
+step <- stepAIC(lm_3, direction="backward")
+step$anova
+
+```
+
+### SCORING:
+
+** Take a peek at the heads: **
+
+```{r warning=FALSE, message=FALSE}
+library(ROCR)
+
+head(train$TARGET_WINS)
+head(predict(lm_1))
+head(predict(lm_2))
+head(predict(lm_3))
+```
+
+** The sums are all the same:**
+
+```{r warning=FALSE, message=FALSE}
+sum(train$TARGET_WINS)
+sum(predict(lm_1))
+sum(predict(lm_2))
+sum(predict(lm_3))
+```
+
+** Models 2&3 are closer on summed variance and ANOVA**
+
+```{r warning=FALSE, message=FALSE}
+(summary(lm_1)$sigma)**2
+(summary(lm_2)$sigma)**2
+(summary(lm_3)$sigma)**2
+
+fit_1 <- aov(lm_1, data = train)
+fit_2 <- aov(lm_2, data = train)
+fit_3 <- aov(lm_3, data = train)
+
+fit_1
+fit_2
+fit_3
+
+```
+
+# Conclusion:
+
+* The models crated by forward and backward selection turned out to be the same.  
+* All 3 models summed to exactly the same sum as the training data.
+* The sums of the variances for models 2 and 3 were also a bit less than model 1
+* The ANOVA residual standard error was also lowest with models 2 and 3 by a bit.

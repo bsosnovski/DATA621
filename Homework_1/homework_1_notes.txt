@@ -1,0 +1,6 @@
+- the offense and defense "HITS" columns are definitely not independant.
+	- the can be made independent by calculating "singles" on the offensive side, and "non_hr" on the defensive side
+- hbp column is 91% NA
+- maybe hr's should be exponential in the linear model - they have a direct impact on the score...the textbook did something like this in the "full sample" chapter
+- replacing NAs with zeros makes the plots have vertical lines in them and not be evenly distributed.  maybe put "samples" from that column instead to allow it to keep its core distribution...
+- 

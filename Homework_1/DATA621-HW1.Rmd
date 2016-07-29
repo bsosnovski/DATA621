@@ -1,0 +1,300 @@
+---
+title: "DATA621-HW1"
+author: "J. Hamski, D. Fanelli, Y. Xiang, D. Brooks"
+date: "June 6, 2016"
+output: html_document
+---
+Packages
+```{r, warning=FALSE, message=FALSE}
+require(readr)
+require(dplyr)
+require(tidyr)
+require(ggplot2)
+require(knitr)
+require(grid)
+require(gridExtra)
+```
+
+# HW1: Writeup with 4 Sections
+
+Overview
+
+In this homework assignment, you will explore, analyze and model a data set containing approximately 2200 records. Each record represents a professional baseball team from the years 1871 to 2006 inclusive. Each record has the performance of the team for the given year, with all of the statistics adjusted to match the performance of a 162 game season.
+
+Your objective is to build a multiple linear regression model on the training data to predict the number of wins for the team. You can only use the variables given to you (or variables that you derive from the variables provided). Below is a short description of the variables of interest in the data set:
+
+## 1. DATA EXPLORATION (35 Points)
+
+Describe the size and the variables in the moneyball training data set. Consider that too much detail will cause a manager to lose interest while too little detail will make the manager consider that you aren’t doing your job. Some suggestions are given below. Please do NOT treat this as a check list of things to do to complete the assignment. You should have your own thoughts on what to tell the boss. These are just ideas.
+
+a. Mean / Standard Deviation / Median
+b. Bar Chart or Box Plot of the data
+c. Is the data correlated to the target variable (or to other variables?)
+d. Are any of the variables missing and need to be imputed “fixed”?
+
+```{r, warning=FALSE, message=FALSE}
+eval <- read.csv("moneyball-evaluation-data.csv")
+train <- read.csv("moneyball-training-data.csv")
+```
+
+# first off, gotta get rid of the "HITS"
+
+```{r}
+# go with 1b instead of "hits"
+train$TEAM_BATTING_1B <- (train$TEAM_BATTING_H -(train$TEAM_BATTING_2B + train$TEAM_BATTING_3B + train$TEAM_BATTING_HR))
+# re-order it:
+train <- train[c(ncol(train),2:ncol(train)-1)]
+# REMOVE TEAM_BATTING_HBP B/C IT WAS SO RARELY PRESENT
+train$TEAM_BATTING_H <- NULL
+
+
+# go with 1_2_3b instead of "hits"
+train$TEAM_PITCHING_NON_HR <- (train$TEAM_PITCHING_H - train$TEAM_PITCHING_HR)
+train$TEAM_PITCHING_H <- NULL
+# REMOVE TEAM_BATTING_HBP B/C IT WAS SO RARELY PRESENT
+#train <- train[c(ncol(train),2:ncol(train)-1)]
+# re-order it:
+#train <- train[c(ncol(train),2:ncol(train)-1)]
+colnames(train)
+```
+
+# Basic Dot Plots:
+
+NOTE: keeping the warnings in b/c they are telling us all of the missing values....
+
+## The Values:
+
+### Dot Plots:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# TARGET_WINS dot plotted with each field:
+plt_TEAM_BATTING_1B <- ggplot(train, aes(x=TEAM_BATTING_1B, y=TARGET_WINS)) + geom_point() + ylab("WINS")
+plt_TEAM_BATTING_2B <- ggplot(train, aes(x=TEAM_BATTING_2B, y=TARGET_WINS)) + geom_point() + ylab("WINS")
+plt_TEAM_BATTING_3B <- ggplot(train, aes(x=TEAM_BATTING_3B, y=TARGET_WINS)) + geom_point() + ylab("WINS")
+plt_TEAM_BATTING_HR <- ggplot(train, aes(x=TEAM_BATTING_HR, y=TARGET_WINS)) + geom_point() + ylab("WINS")
+plt_TEAM_BATTING_BB <- ggplot(train, aes(x=TEAM_BATTING_BB, y=TARGET_WINS)) + geom_point() + ylab("WINS")
+plt_TEAM_BATTING_SO <- ggplot(train, aes(x=TEAM_BATTING_SO, y=TARGET_WINS)) + geom_point() + ylab("WINS")
+plt_TEAM_BASERUN_SB <- ggplot(train, aes(x=TEAM_BASERUN_SB, y=TARGET_WINS)) + geom_point() + ylab("WINS")
+plt_TEAM_BASERUN_CS <- ggplot(train, aes(x=TEAM_BASERUN_CS, y=TARGET_WINS)) + geom_point() + ylab("WINS")
+plt_TEAM_BATTING_HBP <- ggplot(train, aes(x=TEAM_BATTING_HBP, y=TARGET_WINS)) + geom_point() + ylab("WINS")
+plt_TEAM_PITCHING_NON_HR <- ggplot(train, aes(x=TEAM_PITCHING_NON_HR, y=TARGET_WINS)) + geom_point() + ylab("WINS")
+plt_TEAM_PITCHING_HR <- ggplot(train, aes(x=TEAM_PITCHING_HR, y=TARGET_WINS)) + geom_point() + ylab("WINS")
+plt_TEAM_PITCHING_BB <- ggplot(train, aes(x=TEAM_PITCHING_BB, y=TARGET_WINS)) + geom_point() + ylab("WINS")
+plt_TEAM_PITCHING_SO <- ggplot(train, aes(x=TEAM_PITCHING_SO, y=TARGET_WINS)) + geom_point() + ylab("WINS")
+plt_TEAM_FIELDING_E <- ggplot(train, aes(x=TEAM_FIELDING_E, y=TARGET_WINS)) + geom_point() + ylab("WINS")
+plt_TEAM_FIELDING_DP <- ggplot(train, aes(x=TEAM_FIELDING_DP, y=TARGET_WINS)) + geom_point() + ylab("WINS")
+
+grid.arrange(plt_TEAM_BATTING_1B, plt_TEAM_BATTING_2B, plt_TEAM_BATTING_3B, plt_TEAM_BATTING_HR, plt_TEAM_BATTING_BB, plt_TEAM_BATTING_SO, plt_TEAM_BASERUN_SB, plt_TEAM_BASERUN_CS, plt_TEAM_BATTING_HBP,plt_TEAM_PITCHING_NON_HR, plt_TEAM_PITCHING_HR, plt_TEAM_PITCHING_BB,plt_TEAM_PITCHING_SO, plt_TEAM_FIELDING_E, plt_TEAM_FIELDING_DP, ncol = 3, nrow = 5)
+```
+
+### Histograms:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# TARGET_WINS dot plotted with each field:
+plt_TEAM_BATTING_1B <- ggplot(train, aes(x=TEAM_BATTING_1B)) + geom_histogram()
+plt_TEAM_BATTING_2B <- ggplot(train, aes(x=TEAM_BATTING_2B)) + geom_histogram()
+plt_TEAM_BATTING_3B <- ggplot(train, aes(x=TEAM_BATTING_3B)) + geom_histogram()
+plt_TEAM_BATTING_HR <- ggplot(train, aes(x=TEAM_BATTING_HR)) + geom_histogram()
+plt_TEAM_BATTING_BB <- ggplot(train, aes(x=TEAM_BATTING_BB)) + geom_histogram()
+plt_TEAM_BATTING_SO <- ggplot(train, aes(x=TEAM_BATTING_SO)) + geom_histogram()
+plt_TEAM_BASERUN_SB <- ggplot(train, aes(x=TEAM_BASERUN_SB)) + geom_histogram()
+plt_TEAM_BASERUN_CS <- ggplot(train, aes(x=TEAM_BASERUN_CS)) + geom_histogram()
+plt_TEAM_BATTING_HBP <- ggplot(train, aes(x=TEAM_BATTING_HBP)) + geom_histogram()
+plt_TEAM_PITCHING_NON_HR <- ggplot(train, aes(x=TEAM_PITCHING_NON_HR)) + geom_histogram()
+plt_TEAM_PITCHING_HR <- ggplot(train, aes(x=TEAM_PITCHING_HR)) + geom_histogram()
+plt_TEAM_PITCHING_BB <- ggplot(train, aes(x=TEAM_PITCHING_BB)) + geom_histogram()
+plt_TEAM_PITCHING_SO <- ggplot(train, aes(x=TEAM_PITCHING_SO)) + geom_histogram()
+plt_TEAM_FIELDING_E <- ggplot(train, aes(x=TEAM_FIELDING_E)) + geom_histogram()
+plt_TEAM_FIELDING_DP <- ggplot(train, aes(x=TEAM_FIELDING_DP)) + geom_histogram()
+
+grid.arrange(plt_TEAM_BATTING_1B, plt_TEAM_BATTING_2B, plt_TEAM_BATTING_3B, plt_TEAM_BATTING_HR, plt_TEAM_BATTING_BB, plt_TEAM_BATTING_SO, plt_TEAM_BASERUN_SB, plt_TEAM_BASERUN_CS, plt_TEAM_BATTING_HBP,plt_TEAM_PITCHING_NON_HR, plt_TEAM_PITCHING_HR, plt_TEAM_PITCHING_BB,plt_TEAM_PITCHING_SO, plt_TEAM_FIELDING_E, plt_TEAM_FIELDING_DP, ncol = 3, nrow = 5)
+```
+
+## The QQ Plots:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# TARGET_WINS dot plotted with each field:
+plt_TEAM_BATTING_1B <- ggplot(train, aes(sample=TEAM_BATTING_1B)) + stat_qq() + ggtitle("TEAM_BATTING_1B")
+plt_TEAM_BATTING_2B <- ggplot(train, aes(sample=TEAM_BATTING_2B)) + stat_qq() + ggtitle("TEAM_BATTING_2B")
+plt_TEAM_BATTING_3B <- ggplot(train, aes(sample=TEAM_BATTING_3B)) + stat_qq() + ggtitle("TEAM_BATTING_3B")
+plt_TEAM_BATTING_HR <- ggplot(train, aes(sample=TEAM_BATTING_HR)) + stat_qq() + ggtitle("TEAM_BATTING_HR")
+plt_TEAM_BATTING_BB <- ggplot(train, aes(sample=TEAM_BATTING_BB)) + stat_qq() + ggtitle("TEAM_BATTING_BB")
+plt_TEAM_BATTING_SO <- ggplot(train, aes(sample=TEAM_BATTING_SO)) + stat_qq() + ggtitle("TEAM_BATTING_SO")
+plt_TEAM_BASERUN_SB <- ggplot(train, aes(sample=TEAM_BASERUN_SB)) + stat_qq() + ggtitle("TEAM_BASERUN_SB")
+plt_TEAM_BASERUN_CS <- ggplot(train, aes(sample=TEAM_BASERUN_CS)) + stat_qq() + ggtitle("TEAM_BASERUN_CS")
+plt_TEAM_BATTING_HBP <- ggplot(train, aes(sample=TEAM_BATTING_HBP)) + stat_qq() + ggtitle("TEAM_BATTING_HBP")
+plt_TEAM_PITCHING_NON_HR <- ggplot(train, aes(sample=TEAM_PITCHING_NON_HR)) + stat_qq() + ggtitle("TEAM_PITCHING_NON_HR")
+plt_TEAM_PITCHING_HR <- ggplot(train, aes(sample=TEAM_PITCHING_HR)) + stat_qq() + ggtitle("TEAM_PITCHING_HR")
+plt_TEAM_PITCHING_BB <- ggplot(train, aes(sample=TEAM_PITCHING_BB)) + stat_qq() + ggtitle("TEAM_PITCHING_BB")
+plt_TEAM_PITCHING_SO <- ggplot(train, aes(sample=TEAM_PITCHING_SO)) + stat_qq() + ggtitle("TEAM_PITCHING_SO")
+plt_TEAM_FIELDING_E <- ggplot(train, aes(sample=TEAM_FIELDING_E)) + stat_qq() + ggtitle("TEAM_FIELDING_E")
+plt_TEAM_FIELDING_DP <- ggplot(train, aes(sample=TEAM_FIELDING_DP)) + stat_qq() + ggtitle("TEAM_FIELDING_DP")
+
+grid.arrange(plt_TEAM_BATTING_1B, plt_TEAM_BATTING_2B, plt_TEAM_BATTING_3B, plt_TEAM_BATTING_HR, plt_TEAM_BATTING_BB, plt_TEAM_BATTING_SO, plt_TEAM_BASERUN_SB, plt_TEAM_BASERUN_CS, plt_TEAM_BATTING_HBP,plt_TEAM_PITCHING_NON_HR, plt_TEAM_PITCHING_HR, plt_TEAM_PITCHING_BB,plt_TEAM_PITCHING_SO, plt_TEAM_FIELDING_E, plt_TEAM_FIELDING_DP, ncol = 3, nrow = 5)
+```
+
+### Data Exploration Summary:
+
+* HBP is 91% n/a, so much so that it should be dropped.  The other NAs should be fixed in Data Preparation.
+
+## 2. DATA PREPARATION (35 Points)
+
+Describe how you have transformed the data by changing the original variables or creating new variables. If you did transform the data or create new variables, discuss why you did this. Here are some possible transformations.
+
+a. Fix missing values (maybe with a Mean or Median value)
+b. Create flags to suggest if a variable was missing
+c. Transform data by putting it into buckets
+d. Mathematical transforms such as log or square root (or use Box-Cox)
+e. Combine variables (such as ratios or adding or multiplying) to create new variables
+
+```{r, warning=FALSE, message=FALSE}
+
+train$TEAM_BATTING_HBP <- NULL
+
+```
+
+So we see that the cols with NAs are: TEAM_BATTING_SO, TEAM_BASERUN_SB, TEAM_BASERUN_CS, TEAM_PITCHING_SO, and TEAM_FIELDING_DP
+
+Replace those NAs in those columns with sample values from the column that are NOT NA.
+
+```{r, warning=FALSE, message=FALSE}
+
+train$TEAM_BATTING_SO[is.na(train$TEAM_BATTING_SO)] <- sample(train$TEAM_BATTING_SO[!is.na(train$TEAM_BATTING_SO)])
+train$TEAM_BASERUN_SB[is.na(train$TEAM_BASERUN_SB)] <- sample(train$TEAM_BASERUN_SB[!is.na(train$TEAM_BASERUN_SB)])
+train$TEAM_BASERUN_CS[is.na(train$TEAM_BASERUN_CS)] <- sample(train$TEAM_BASERUN_CS[!is.na(train$TEAM_BASERUN_CS)])
+train$TEAM_PITCHING_SO[is.na(train$TEAM_PITCHING_SO)] <- sample(train$TEAM_PITCHING_SO[!is.na(train$TEAM_PITCHING_SO)])
+train$TEAM_FIELDING_DP[is.na(train$TEAM_FIELDING_DP)] <- sample(train$TEAM_FIELDING_DP[!is.na(train$TEAM_FIELDING_DP)])
+
+
+# the following would have replaced it with just the mean, but that would throw off the normal distribution:
+
+#for(i in 1:ncol(train)){
+#  train[is.na(train[,i]), i] <- mean(train[,i], na.rm = TRUE)
+#}
+
+is_na <- sapply(train, function(x) sum(is.na(x)))
+is_na
+```
+
+
+# Missing values per column:
+
+NA %s:
+
+```{r warning=FALSE}
+is_na <- sapply(train, function(x) sum(is.na(x)))
+not_na <- sapply(train, function(x) sum(!is.na(x)))
+na_summary_df <- data.frame(is_na, not_na)
+na_summary_df$na_pct <- (na_summary_df$is_na / (na_summary_df$is_na + na_summary_df$not_na))
+kable(na_summary_df)
+
+par(mfrow=c(2,2))
+plot(lm(TARGET_WINS ~ TEAM_BATTING_1B, data = train), which=1:4, main = "TEAM_BATTING_1B")
+plot(lm(TARGET_WINS ~ TEAM_BATTING_2B, data = train), which=1:4, main = "TEAM_BATTING_2B")
+plot(lm(TARGET_WINS ~ TEAM_BATTING_3B, data = train), which=1:4, main = "TEAM_BATTING_3B")
+plot(lm(TARGET_WINS ~ TEAM_BATTING_HR, data = train), which=1:4, main = "TEAM_BATTING_HR")
+plot(lm(TARGET_WINS ~ TEAM_BATTING_BB, data = train), which=1:4, main = "TEAM_BATTING_BB")
+plot(lm(TARGET_WINS ~ TEAM_BATTING_SO, data = train), which=1:4, main = "TEAM_BATTING_SO")
+plot(lm(TARGET_WINS ~ TEAM_BASERUN_SB, data = train), which=1:4, main = "TEAM_BASERUN_SB")
+plot(lm(TARGET_WINS ~ TEAM_BASERUN_CS, data = train), which=1:4, main = "TEAM_BASERUN_CS")
+plot(lm(TARGET_WINS ~ TEAM_PITCHING_NON_HR, data = train), which=1:4, main = "TEAM_PITCHING_NON_HR")
+plot(lm(TARGET_WINS ~ TEAM_PITCHING_HR, data = train), which=1:4, main = "TEAM_PITCHING_HR")
+plot(lm(TARGET_WINS ~ TEAM_PITCHING_BB, data = train), which=1:4, main = "TEAM_PITCHING_BB")
+plot(lm(TARGET_WINS ~ TEAM_PITCHING_SO, data = train), which=1:4, main = "TEAM_PITCHING_SO")
+plot(lm(TARGET_WINS ~ TEAM_FIELDING_E, data = train), which=1:4, main = "TEAM_FIELDING_E")
+plot(lm(TARGET_WINS ~ TEAM_FIELDING_DP, data = train), which=1:4, main = "TEAM_FIELDING_DP")
+
+```
+
+# Residuals:
+
+```{r warning=FALSE, echo=FALSE}
+par(mfrow=c(2,2))
+plot(train$TEAM_BATTING_1B, resid(lm(TARGET_WINS ~ TEAM_BATTING_1B, data=train)), ylab="Residuals") 
+abline(0, 0)       
+plot(train$TEAM_BATTING_2B, resid(lm(TARGET_WINS ~ TEAM_BATTING_2B, data=train)), ylab="Residuals") 
+abline(0, 0)       
+plot(train$TEAM_BATTING_3B, resid(lm(TARGET_WINS ~ TEAM_BATTING_3B, data=train)), ylab="Residuals") 
+abline(0, 0)       
+plot(train$TEAM_BATTING_HR, resid(lm(TARGET_WINS ~ TEAM_BATTING_HR, data=train)), ylab="Residuals") 
+abline(0, 0)       
+plot(train$TEAM_BATTING_BB, resid(lm(TARGET_WINS ~ TEAM_BATTING_BB, data=train)), ylab="Residuals") 
+abline(0, 0)       
+
+plot(train$TEAM_BATTING_SO, resid(lm(TARGET_WINS ~ TEAM_BATTING_SO, data=train)), ylab="Residuals") 
+abline(0, 0)       
+
+plot(train$TEAM_BASERUN_SB, resid(lm(TARGET_WINS ~ TEAM_BASERUN_SB, data=train)), ylab="Residuals") 
+abline(0, 0)       
+
+plot(train$TEAM_BASERUN_CS, resid(lm(TARGET_WINS ~ TEAM_BASERUN_CS, data=train)), ylab="Residuals") 
+abline(0, 0)       
+
+plot(train$TEAM_PITCHING_NON_HR, resid(lm(TARGET_WINS ~ TEAM_PITCHING_NON_HR, data=train)), ylab="Residuals") 
+abline(0, 0)       
+
+plot(train$TEAM_PITCHING_HR, resid(lm(TARGET_WINS ~ TEAM_PITCHING_HR, data=train)), ylab="Residuals") 
+abline(0, 0)       
+
+plot(train$TEAM_PITCHING_BB, resid(lm(TARGET_WINS ~ TEAM_PITCHING_BB, data=train)), ylab="Residuals") 
+abline(0, 0)       
+
+plot(train$TEAM_PITCHING_SO, resid(lm(TARGET_WINS ~ TEAM_PITCHING_SO, data=train)), ylab="Residuals") 
+abline(0, 0)       
+
+plot(train$TEAM_FIELDING_E, resid(lm(TARGET_WINS ~ TEAM_FIELDING_E, data=train)), ylab="Residuals") 
+abline(0, 0)       
+
+plot(train$TEAM_FIELDING_DP, resid(lm(TARGET_WINS ~ TEAM_FIELDING_DP, data=train)), ylab="Residuals") 
+abline(0, 0)       
+```
+
+### Generated Variable: Offensive Events (OE)
+
+Here, we define a generated variable called "Offensive Events" (OE) which is defined as anything a batter does that does not result in an out - walks, hit by pitch, 1, 2, or 3 base hits, or a homerun.
+```{r}
+train.oe <- train %>%
+  mutate(oe = TEAM_BATTING_1B, TEAM_BATTING_2B, TEAM_BATTING_3B, TEAM_BATTING_HR, TEAM_BATTING_BB) %>%
+  select(-TEAM_BATTING_2B, -TEAM_BATTING_3B, -TEAM_BATTING_HR, -TEAM_BATTING_BB)
+
+plot(TARGET_WINS ~ oe, train.oe)
+```
+
+
+
+
+## 3. BUILD MODELS (50 Points)
+
+Using the training data set, build at least three different multiple linear regression models, using different variables (or the same variables with different transformations). Since we have not yet covered automated variable selection methods, you should select the variables manually (unless you previously learned Forward or Stepwise selection, etc.). Since you manually selected a variable for inclusion into the model or exclusion into the model, indicate why this was done.
+
+Discuss the coefficients in the models, do they make sense? For example, if a team hits a lot of Home Runs, it would be reasonably expected that such a team would win more games. However, if the coefficient is negative (suggesting that the team would lose more games), then that needs to be discussed. Are you keeping the model even though it is counter intuitive? Why? The boss needs to know.
+
+```{r warning=FALSE}
+# This model will simply add the total bases FOR and total bases AGAINST:
+fit1 <- lm(TARGET_WINS ~ ., data=train)
+summary(fit1)
+```
+
+
+### Model: Offensive events and key negative defensive events
+
+This linear model uses a generated predictor variable "offensive events" (1,2,3 base hits + HR + walks) and a selection of negative defensive events (walks, hits, home runs allowed).  
+
+```{r}
+key.offense.defenense <- lm(TARGET_WINS ~ oe + TEAM_PITCHING_BB + TEAM_PITCHING_NON_HR + TEAM_PITCHING_HR, data = train.oe)
+summary(key.offense.defenense)
+```
+
+```{r}
+plot(key.offense.defenense)
+```
+
+
+## 4. SELECT MODELS (30 Points)
+
+Decide on the criteria for selecting the best multiple linear regression model. Will you select a model with slightly worse performance if it makes more sense or is more parsimonious? Discuss why you selected your model.
+
+For the multiple linear regression model, will you use a metric such as Adjusted R2, RMSE, etc.? Be sure to explain how you can make inferences from the model, discuss multi-collinearity issues (if any), and discuss other relevant model output. Using the training data set, evaluate the multiple linear regression model based on (a) mean squared error, (b) R2, (c) F-statistic, and (d) residual plots. Make predictions using the evaluation data set.
+
+
+
