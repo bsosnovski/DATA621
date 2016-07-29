@@ -1,0 +1,185 @@
+---------------------------------------------------------
+Meetup #1:
+---------------------------------------------------------
+Regression Modeling, Predictive Analytics
+Linear Regression: dependence of Y on x1, x2, ... is linear
+Goal: predict Y from X by f(x)
+"Expectation" E[X] of random variable is its "average" value: 
+- E(X)=sum(x * P(X=x))
+- E(X)=integral(x * p(x)dx)
+Variance Var(X) = E[(X-E[X]^2)] = E[X^2] - (E[X])^2
+"Frequentist Basics"
+We typically use maximum likelihood estimation (MLE) to get parameter estimates for our model
+IID = Independent and identically distributed
+Joint Density Func == Likelihood Func
+It is better to work with log-likelihood (logarithm of the likelihood function) = summation(ln p0(xi))
+Use MLE or NLL: Maximum Likelihood Estimation or Negative Log Likelihood
+Loss Function L(Y,f(X)) -> penalizing prediction errors
+Squared Error Loss: L(Y,f(X))-(Y-f(X))^2
+EPE(f) (Expected Prediction Error) = ExEy|x([Y-f(X)]^2|X)
+solution is f(x) = E(Y|X=x) which is the conditional expectation, or regression function
+Best prediction of Y at any X = x is the conditional mean, when best is measured by average squared error
+A linear regression model assumes that the regression function E(Y | X) is linear
+Linear Regression Model:
+- Input Vector t(X)=(X1,X2,...,Xp)
+- Output Y is real valued and ordered, predict Y from X
+- "train function f(X)"
+- by end of training, have a func f(X) to map every X into an estimated Y
+Linear Regression Model Assumptions:
+1) Linearity, 2) Full Column Rank, 3) Exogeneity 4) Homoscedasticity and nonautocorrelation 5) can be Mix of constants and random vars 6) normal distribution
+Ordinary Least Squares Estimation...lot of matrix math proofs
+RSS = residual sum of squares = sum of squared errors (SSE)
+simple and multiple linear regression model
+Gauss-Markov Theorem: OLS gives smallest variance/MSE
+SE Standard Error, CI's Confidence Intervals, PI's Prediction Intervals 
+RSE = sqrt(RSS/(n-[-1)) = Residual Standard Error = average amounts response will deviate from true regression line
+R^2 = (TSS-RSS)/TSS = 1 - (RSS/TSS) where TSS is Total Sum Squares = Amount of variability in response before regression performed
+RSS measures amount of post-regression variability left unexplained (between 0 (no fit) and 1 (perfect fit) )
+Null vs Alt. Hypothesis, H0 vs Ha
+t-statistic: if t is large (and p is small, < 0.05), reject H0
+ANOVA table gives F-statistic and corresponding p-value
+Variable Selection:
+- Best Subset: compute OLS fit for all possible subsets of predictors and choose by some criteria that balances training error with model size
+- can examin all models b/c there are 2^p of them
+- Automated Approaches: Forward Selection, Backward Selection
+Qualitative == Discrete == Categorical -> turn into "dummy" indicator vars
+Remedies for Non-Normal Errors:
+- Avoid Aggregated Data
+- Transform the response/predictor variables (Box-Cox)
+- Enlarge the sample (asymptotic normality)
+---------------------------------------------------------
+Meetup #2:
+---------------------------------------------------------
+Variable Selection and Shrinkage: (See his Lab)
+OLS: when good
+Selection Methods: 
+- Best Subset Selection: 
+	- for all p choose k models, select the best by cross validated prediction error: AIC, BIC, or adjusted R^2
+	- The RSS (R^2) always declines (increases) as num predictors increases
+	- becomes not practical when p too large
+- Shrinkage/Regularization:
+- Dimension Reduction
+- Stepwise Selection: Forward/Backward: to choose, still use cross-validated prediction error or AIC, BIC, or adjusted R^2
+	- not guaranteed to give best subset, but can work for large large p's
+	- Forward even when n < p, backward requires n > p
+	- there's a hybrid of forward and backward
+- Choosing Model:
+	- overfitting, test vs train, etc.
+	- directly (validation or cross validation set) or indirectly estimating test error
+	- Adjusted R^2 = 1 - ((RSS/(n-d-1))/(TSS/(n-1))) where TSS = total sum squares
+		- Large Adjusted R^2 means model with small test error
+		- pays a price for inclusion on unnecessary variables in model
+	- AIC (Akaike information criterion)
+	– BIC (Bayesian information criterion)
+	– Mallow’s Cp (equivalent to AIC for linear regression)
+	- (See charts) Small Cp and BIC ->  low error, better model
+	- Large Adjusted R2 indicates a better model
+Validation + Cross Validation...
+Shrinkage/Regularization Methods:
+- subset selection methods using OLS
+- or use all p predictors but constrain/regularize coefficients (shrinks coefficients towards zero)
+- shrinking coefficients can reduce their variance
+- regularization combats overfitting
+Ridge Regression: similar to OLS....math details...
+- RR is best after standardizing the predictors
+- There's a bias variance tradeoff
+Lasso: (see Lab...) Lasso vs Ridge
+So far, these methods (OLS) have kept original predictors, but now:
+* Dimension Reduction
+- Principal Components Regression using PCA
+	- first PC is normalized linear combo of largest variance variables
+	- second PC has largest variance (but was uncorrelated to PC1)
+	- ie - replace many correlated variables with small set of principal components
+	- So PCR lets a small # of PC's explain most of the variance in the data and relationship to response
+	- predictors should be standardized before generating PCs
+	- proofs with eigens, etc. only keep large eigenvalues, get rid of small ones (set them to zero)
+	- in a way, PCR is similar to Ridge Regression, which is like projecting y vector onto PC directions and then shrinking each PC direction
+	- more PCs: bias decreases, variance increases
+	- PCR is NOT a feature selection method
+	- # of PCs usually chosen by cross validation
+Partial Least Squares:	
+	- PCR suffers b/c the directions that explain the predictors may not help predict the response
+	- unsupervised b/c response Y is not used to figure out PCs
+	- PLS is dimension reduction like PCR, but in a supervised way
+	- PLS can reduce bias but can increase variance
+"high dimensional":
+- means more features than observations (dont use OLS)
+- stepwise selection, ridge, lasso and PCR are better for high dimensional scenarios
+- regularization and shrinkage important for high-dimensional problems
+- appropriate tuning params in crucial
+- test error increases as dimensionality (# predictors) increases (curse of dimensionality)
+- high dimension -> multicolinearity is extreme
+- never use sum-of-sqares errors, p-values, R^2, or other model fit stats as evidence of good model when its high dimensional
+BINARY LOGISTIC REGRESSION:
+Classification: qualitative responses, classifying.  Supervised.
+uses probability of qualitative variable values as basis for decision
+using color dot plots is good for qualitative responses
+Classificatino Error Rate = # misclassifications / sample size
+Can you use Linear Regression?
+- view linear regression as estimate of conditional expectation
+- 1 problem is that fitted values can be negative or greater than 1
+OLS is not appropriate with only 2 values
+Logistic Regression (with curves) might be better for showing relation of choices between binary values
+Logistic Regression:
+- generative model: learns the join prob dist
+- discriminative model: learns the conditional prob dist
+- Base rule applies: log(Pr(G=k|X=x)/Pr(G=l|X-x)) = 0 = a0^kl + summation(aj^k,l)*xj
+- models relationships: dichotomous(yes/no), categorical, continuous Xs and dichotomous Y
+- "log-odds", or logit transformation = the log ratios of posterior probabilties
+- For logit/logodds, the probs must sum to 1
+- the "logistic function" for p(y|x) (the sideways uphill 0 to 1 curve)
+- Binary Logit is the disease/exposure 2x2 grid
+- we want to find parameters that maximize the conditional likelihood of class labels G given X using training data
+- not interested in the X distribution, but on the conditional probabilities of class labels given X
+- (lots of math solving lgit formulas, etc)
+- Logit examples: healtcare, credti card default
+- use a Z test and interpret the p-value as usual.
+- ex: probability of default for someone with a balance of $1000? $2000?
+Heteroskedasticity (next topic) - the variance having a pattern
+- homoscedasticity can be the null hypothesis
+- detects it with: Breusch-Pagan Test, The White Test,  
+Weighted Least Squares
+- transform model to have homoskedastic errors (weighted least squares)
+- weighted least squares math...
+- estimating by transformed equation by OLS is an example of GLS (generalized least squares)
+- GLS is best linear unbiased estimator (BLUE) when accounting for heteroscedasticity
+- GLS is a weighted least squares (WLS) procedure where each squared residual is weighted by the inverse of the Var(u|x)	
+- main idea: less weight given to observations with higher error variance
+- OLS can be tedious transformation, so WLS does it w/o transformation
+- idea: minimize weighted sum of squared residuals
+- great if we know the variance/heteroscedasticity, though we normally dont
+Feasible GLS, or FGLS
+- not unbiased, but consistent and asymptotically more efficient than OLS
+- proof...steps to doing it....
+---------------------------------------------------------
+Lab Notes:
+---------------------------------------------------------
+- set seed...
+- 1/4 of data for test, 3/4 for train
+- plot pairs (see that 1 relation is categorical)
+- check for colinnearity with vif()
+## Part 1: Fit a Least Squares Regression Model using all ten predictors
+- run predict(lm) func
+- calculate mean var and sd of predictions from test
+## Part 2: Apply Best Subset Selection using BIC to select the number of predictors and then fit a least squares regression model using the "best" subset of predictor variables
+## Part 3: Apply Best Subset Selection using 10-fold Cross-Validation to select the number of predictors and then fit the least squares regression model using the "best" subset. k <- 10
+## Part 4: Ridge regression model using 10-fold cross-validation to select that largest value of lambda s.t. the CV error is within 1 s.e. of the minimum
+## Part 5: Lasso model using 10-fold cross-validation to select that largest value of lambda s.t. the CV error is within 1 s.e. of the minimum
+## Part 6: Principal Components Regression ensure that the predictors are standardized compute the 10-fold CV error for each possible value of M (# of principal components)
+## Part 7: Partial Least Squares Regression
+
+- set seed so you can reproduce the random
+- do std error AND mse
+- if std errors are the same, then go with the lower variance
+- vif() = variance inflation factors
+- sd() / sqrt() = SE
+- glmnet() func
+-
+
+Box Coxx to Find Best:
+
+Library(moments) to get skewness
+library(mass) for box Cox
+Transform by cube root of response car
+
+I'm up to 'stats learning 5d' youtube

@@ -1,0 +1,287 @@
+```{r message=FALSE}
+# R Lab Demo: Linear Regression, Variable Selection, Ridge Regression, Lasso, PCR, PLS
+# DATA 621: Business Analytics and Data Mining
+
+# In this lab, we will use the diabetes data in Efron et al. (2003) to examine the 
+# effects of ten baseline predictor variables [age, sex, body mass index (bmi), 
+# average blood pressure (map), and six blood serum measurements (tc, ldl, hdl, tch, ltg, glu)] 
+# on a quantitative measure of disease progression one year after baseline. 
+
+# There are 442 diabetes patients in this data set. The data are available in the 
+# R package "lars." We will employ several statistical learning techniques using the diabetes 
+# data to fit linear regression, ridge regression and lasso models. We will also 
+# incorporate best subset selection and cross-validation techniques.
+
+# Load the relevant libraries
+library(lars)
+library(car)
+library(leaps)
+library(glmnet)
+
+# Load the diabetes data
+data(diabetes)
+data.all <- data.frame(cbind(diabetes$x, y = diabetes$y))
+
+# There are 10 x baseline variables (age, sex, bmi, map, tc, ldl, hdl, tch, ltg, glu)
+# The response (quantitative) variable is a measure of disease progression one year after baseline
+fix(data.all)
+names(data.all)
+dim(data.all)
+
+# Partition the patients into two groups: training (75%) and test (25%)
+n <- dim(data.all)[1]                     # sample size = 442
+set.seed(1306)                            # set random number generator seed to enable
+                                          # repeatability of results
+test <- sample(n, round(n/4))             # randomly sample 25% test
+data.train <- data.all[-test,]
+data.test <- data.all[test,]
+x <- model.matrix(y ~ ., data = data.all)[,-1] # define predictor matrix
+                                               # excl intercept col of 1s
+x.train <- x[-test,]                           # define training predictor matrix
+x.test <- x[test,]                             # define test predictor matrix
+y <- data.all$y                                # define response variable
+y.train <- y[-test]                            # define training response variable
+y.test <- y[test]                              # define test response variable
+n.train <- dim(data.train)[1]                  # training sample size = 332
+n.test <- dim(data.test)[1]                    # test sample size = 110
+
+# Fit the following models to the TRAINING set. For each model, extract the model
+# coefficient estimates, predict the responses for the TEST set, and calculate
+# the "mean prediction error" (and its standard error) in the TEST set.
+
+# Plot a Scatterplot Matrix of the TRAINING data set and TEST data set
+pairs(data.train)
+pairs(data.test)
+
+# Plot Histograms to check for normality of predictor variables
+par(mfrow = c(3, 3))
+hist(data.train$age); hist(data.train$bmi); hist(data.train$map); hist(data.train$tc); 
+hist(data.train$ldl); hist(data.train$hdl); hist(data.train$tch); hist(data.train$ltg);
+hist(data.train$glu)
+```
+
+## Part 1: Fit a Least Squares Regression Model using all ten predictors
+
+```{r message=FALSE}
+#fix(data.train)                           # View the TRAINING data set
+lm.fit <- lm(y ~ ., data = data.train)    # Fit the model using the TRAINING data set
+summary(lm.fit)                           # Summary of the linear regression model
+coef(lm.fit)                              # Extract the estimated regression model coefficients
+confint(lm.fit)                           # Obtain a 95% CI for the coefficient estimates
+par(mfrow = c(2, 2)); plot(lm.fit)        # Plot the model diagnostics
+vif(lm.fit); cor(data.train)              # Check for collinearity (VIF > 10; tc, ldl, hdl, ltg)
+#fix(data.test)                                      # View the TEST data set
+predict(lm.fit, data.test)                          # Predict the responses for the TEST data set
+predict(lm.fit, data.test, interval = "prediction") # Prediction Interval of Predicted Responses
+predict(lm.fit, data.test, interval = "confidence") # Confidence Interval of Predicted Responses
+mean((data.test$y - predict(lm.fit, data.test))^2)  # Mean Predictor Error (test MSE) = 3111.27
+sd((data.test$y - predict(lm.fit, data.test))^2)/sqrt(n.test) # Standard Error = 361.09
+```
+
+## Part 2: Apply Best Subset Selection using BIC to select the number of predictors and then
+
+```{r message=FALSE}
+
+# fit a least squares regression model using the "best" subset of predictor variables
+regfit.full <- regsubsets(y ~ ., data = data.train, nvmax = 10)
+summary(regfit.full)
+par(mfrow = c(1, 2))
+plot(regfit.full, scale = "bic", main = "Predictor Variables vs. BIC")
+reg.summary <- summary(regfit.full)
+reg.summary$bic
+reg.summary$bic[6]
+plot(reg.summary$bic, xlab = "Number of Predictors", ylab = "BIC", type = "l",
+     main = "Best Subset Selection Using BIC")
+which.min(reg.summary$bic)
+points(6, reg.summary$bic[6], col = "brown", cex = 2, pch = 20)
+coef(regfit.full, 6)
+
+# Predict "function" for regsubsets()
+predict.regsubsets <- function(object, newdata, id,...){
+  form <- as.formula(object$call[[2]])
+  mat <- model.matrix(form, newdata)
+  coefi <- coef(object, id = id)
+  xvars <- names(coefi)
+  mat[, xvars]%*%coefi
+}
+mean((data.test$y - predict(regfit.full, data.test, id = 6))^2)  # Mean Predictor Error = 3095.483
+sd((data.test$y - predict(regfit.full, data.test, id = 6))^2)/sqrt(n.test) # Standard Error = 369.75
+
+lm.bic <- lm(y ~ sex + bmi + map + tc + tch + ltg, data = data.train)  
+summary(lm.bic)                           # Summary of the linear regression model
+coef(lm.bic)                              # Extract the estimated regression model coefficients
+confint(lm.bic)                           # Obtain a 95% CI for the coefficient estimates
+par(mfrow = c(2, 2)); plot(lm.bic)        # Plot the model diagnostics
+vif(lm.bic);                              # Check for collinearity (all VIF <= 10)
+predict(lm.bic, data.test)                          # Predict the responses for the TEST data set
+predict(lm.bic, data.test, interval = "prediction") # Prediction Interval of Predicted Responses
+predict(lm.bic, data.test, interval = "confidence") # Confidence Interval of Predicted Responses
+mean((data.test$y - predict(lm.bic, data.test))^2)  # Mean Predictor Error = 3095.483
+sd((data.test$y - predict(lm.bic, data.test))^2)/sqrt(n.test) # Standard Error = 369.75
+```
+
+## Part 3: Apply Best Subset Selection using 10-fold Cross-Validation to select the number
+
+```{r message=FALSE}
+# of predictors and then fit the least squares regression model using the "best" subset.
+k <- 10
+set.seed(1306)
+folds <- sample(1:k, nrow(data.train), replace = TRUE)
+cv.errors <- matrix(NA, k, 10, dimnames = list(NULL, paste(1:10)))
+
+# Let's write our own predict method
+predict.regsubsets <- function(object, newdata, id,...){
+  form <- as.formula(object$call[[2]])
+  mat <- model.matrix(form, newdata)
+  coefi <- coef(object, id = id)
+  xvars <- names(coefi)
+  mat[, xvars]%*%coefi
+}
+
+for (j in 1:k) {
+  best.fit <- regsubsets(y ~ ., data = data.train[folds != j, ], nvmax = 10)
+  for (i in 1:10) {
+    pred <- predict(best.fit, data.train[folds == j, ], id = i)
+    cv.errors[j, i] = mean((data.train$y[folds == j] - pred)^2)
+  }
+}
+
+# This gives us a 10x10 matrix, of which the (i, j)th element corresponds
+# to the test MSE for the ith cross-validation fold for the best j-variable model
+cv.errors
+mean.cv.errors <- apply(cv.errors, 2, mean)
+mean.cv.errors
+which.min(mean.cv.errors)
+mean.cv.errors[6]
+
+par(mfrow = c(1,2))
+plot(mean.cv.errors, type = 'b', xlab = "Number of Predictors", ylab = "Mean CV Errors",
+     main = "Best Subset Selection (10-fold CV)")
+points(6, mean.cv.errors[6], col = "brown", cex = 2, pch = 20)
+
+rmse.cv = sqrt(apply(cv.errors, 2, mean))
+rmse.cv[6]
+plot(rmse.cv, pch = 19, type = "b", xlab = "Number of Predictors", ylab = "RMSE CV",
+     main = "Best Subset Selection (10-fold CV)")
+points(6, rmse.cv[6], col = "blue", cex = 2, pch = 20)
+
+# The cross-validation selects a 6-variable model, so we perform best subset
+# selection on the training data set to get the best 6-variable model
+reg.best <- regsubsets(y ~ ., data = data.train, nvmax = 10)
+coef(reg.best, 6)
+
+mean((data.test$y - predict(reg.best, data.test, id = 6))^2)  # Mean Predictor Error = 3095.483
+sd((data.test$y - predict(reg.best, data.test, id = 6))^2)/sqrt(n.test) # Standard Error = 369.75
+
+lm.cv.best <- lm(y ~ sex + bmi + map + tc + tch + ltg, data = data.train)  
+summary(lm.cv.best)                           # Summary of the linear regression model
+coef(lm.cv.best)                              # Extract the estimated regression model coefficients
+confint(lm.cv.best)                           # Obtain a 95% CI for the coefficient estimates
+par(mfrow = c(2, 2)); plot(lm.cv.best)        # Plot the model diagnostics
+vif(lm.cv.best)                               # Check for collinearity (all VIF <= 10)
+predict(lm.cv.best, data.test)                          # Predict the responses for the TEST data
+predict(lm.cv.best, data.test, interval = "prediction") # PI of Predicted Responses
+predict(lm.cv.best, data.test, interval = "confidence") # CI of Predicted Responses
+mean((data.test$y - predict(lm.cv.best, data.test))^2)  # Mean Predictor Error = 3095.483
+sd((data.test$y - predict(lm.cv.best, data.test))^2)/sqrt(n.test) # Standard Error = 369.75
+```
+
+## Part 4: Ridge regression model using 10-fold cross-validation to select that largest
+
+```{r message=FALSE}
+# value of lambda s.t. the CV error is within 1 s.e. of the minimum
+par(mfrow = c(1,2))
+grid <- 10^seq(10, -2, length = 100)
+ridge.mod <- glmnet(x.train, y.train, alpha = 0, lambda = grid, thresh = 1e-12)
+plot(ridge.mod, xvar = "lambda", label = TRUE)
+
+set.seed(1306)
+cv.out <- cv.glmnet(x.train, y.train, alpha = 0)
+plot(cv.out)
+bestlam <- cv.out$lambda.min
+bestlam                                       # Lambda = 4.904021 (leads to smallest CV error)
+log(bestlam)
+ridge.mod <- glmnet(x.train, y.train, alpha = 0, lambda = bestlam)
+ridge.pred <- predict(ridge.mod, s = bestlam, newx = x.test)
+mean((ridge.pred - y.test)^2)                 # Mean Prediction Error = 3074.378
+sd((ridge.pred - y.test)^2)/sqrt(n.test)      # Standard Error = 357.9628
+
+largelam <- cv.out$lambda.1se
+largelam                                      # Lambda = 41.67209 (largest lambda w/in 1 SE)
+ridge.mod <- glmnet(x.train, y.train, alpha = 0, lambda = largelam)
+ridge.pred <- predict(ridge.mod, s = largelam, newx = x.test)
+mean((ridge.pred - y.test)^2)                 # Mean Prediction Error = 3070.87
+sd((ridge.pred - y.test)^2)/sqrt(n.test)      # Standard Error = 350.5467
+
+# Here are the estimated coefficients
+predict(ridge.mod, type = "coefficients", s = largelam)[1:11,]
+```
+
+## Part 5: Lasso model using 10-fold cross-validation to select that largest
+
+```{r message=FALSE}
+# value of lambda s.t. the CV error is within 1 s.e. of the minimum
+par(mfrow = c(1,2))
+grid <- 10^seq(10, -2, length = 100)
+lasso.mod <- glmnet(x.train, y.train, alpha = 1, lambda = grid, thresh = 1e-12)
+plot(lasso.mod, xvar = "lambda", label = TRUE)
+
+set.seed(1306)
+cv.out <- cv.glmnet(x.train, y.train, alpha = 1)
+plot(cv.out)
+bestlam <- cv.out$lambda.min
+bestlam                                       # Lambda = 0.2026 (leads to smallest CV error)
+log(bestlam)
+lasso.mod <- glmnet(x.train, y.train, alpha = 1, lambda = bestlam)
+lasso.pred <- predict(lasso.mod, s = bestlam, newx = x.test)
+mean((lasso.pred - y.test)^2)                 # Mean Prediction Error = 3103.65
+sd((lasso.pred - y.test)^2)/sqrt(n.test)      # Standard Error = 363.0016
+
+largelam <- cv.out$lambda.1se
+largelam                                      # Lambda = 4.791278 (largest lambda w/in 1 SE)
+lasso.mod <- glmnet(x.train, y.train, alpha = 1, lambda = largelam)
+lasso.pred <- predict(lasso.mod, s = largelam, newx = x.test)
+mean((lasso.pred - y.test)^2)                 # Mean Prediction Error = 2920.041
+sd((lasso.pred - y.test)^2)/sqrt(n.test)      # Standard Error = 346.2248
+
+# Here are the estimated coefficients
+lasso.coef <- predict(lasso.mod, type = "coefficients", s = largelam)[1:11,]
+lasso.coef[lasso.coef != 0]
+```
+
+
+## Part 6: Principal Components Regression
+# ensure that the predictors are standardized
+# compute the 10-fold CV error for each possible value of M (# of principal components)
+
+```{r message=FALSE}
+library(pls)
+set.seed(1306)
+pcr.mod <- pcr(y ~ ., data = data.train, scale = TRUE, validation = "CV")
+summary(pcr.mod) # report the RMSE (so square this value to get MSE)
+
+# Plot the cross-validation scores (MSE)
+validationplot(pcr.mod, val.type = "MSEP")
+
+# We find the lowest CV error when M = 6 component are used. Now compute the test MSE.
+pcr.pred <- predict(pcr.mod, data.test, ncomp = 6)
+mean((pcr.pred - y.test)^2) # Mean Prediction Error = 3153.626
+sd((pcr.pred - y.test)^2)/sqrt(n.test) # Standard Error = 360.2942
+```
+
+
+## Part 7: Partial Least Squares Regression
+
+```{r message=FALSE}
+set.seed(1306)
+pls.mod <- plsr(y ~ ., data = data.train, scale = T, validation = "CV")
+summary(pls.mod)
+
+# Plot the cross-validation scores (MSE)
+validationplot(pls.mod, val.type = "MSEP")
+
+# The lowest CV error occurs when M = 2 PLS directions. We now evaluate the test set MSE
+pls.pred <- predict(pls.mod, data.test, ncomp = 2)
+mean((pls.pred - y.test)^2) # Mean Prediction Error = 3109.772
+sd((pls.pred - y.test)^2)/sqrt(n.test) # Standard Error = 355.3373
+```
