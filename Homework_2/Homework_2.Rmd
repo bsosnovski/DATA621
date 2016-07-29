@@ -1,0 +1,128 @@
+```{r}
+library(caret)
+library(pROC)
+library(ggplot2)
+
+data <- read.csv("https://raw.githubusercontent.com/jhamski/DATA621-Homework/master/Homework_2/classification-output-data.csv?token=AOktEC0D7URGLvXlaLvOq8KjvjxdWfLQks5Xcq3FwA%3D%3D&_sm_au_=iVVk1kf5k5141ZHH", stringsAsFactors = FALSE, sep = ",", header = TRUE)
+
+t <- as.data.frame(table(Actual=data$class, Precidted=data$scored.class))
+
+#Accuracy
+accuracy <- function(t)
+{
+  a <- as.data.frame(table(Actual=t$class, Precidted=t$scored.class))
+  return((a$Freq[1] + a$Freq[4])/sum(a$Freq))
+}
+
+#Error Rate
+ER <- function(t)
+{
+ a <- as.data.frame(table(Actual=t$class, Precidted=t$scored.class))
+ return((a$Freq[2] + a$Freq[3])/sum(a$Freq))
+}
+
+#Precision
+precision <- function(t)
+{
+ a <- as.data.frame(table(Actual=t$class, Precidted=t$scored.class))
+ return(a$Freq[4]/(a$Freq[4]+a$Freq[3]))
+}
+
+#Sensitivity
+sens <- function(t)
+{
+ a <- as.data.frame(table(Actual=t$class, Precidted=t$scored.class))
+ return(a$Freq[4]/(a$Freq[4] + a$Freq[2]))
+}
+
+#Specificity
+spec <- function(t)
+{
+ a <- as.data.frame(table(Actual=t$class, Precidted=t$scored.class))
+ return(a$Freq[1]/(a$Freq[1]+a$Freq[3]))
+}
+
+Fscore <- function(precise, sensitive)
+{
+ return((2 * precise * sensitive)/(precise + sensitive))
+}
+
+acc <- accuracy(t)
+err <- ER(t)
+prec <- precision(t)
+sensitivity <- sens(t)
+specificity <- spec(t)
+
+F1 <- Fscore(prec, sensitivity)
+
+
+##F1 score bounds
+#0 <= F1score <= 1
+#As long as we are not 100% incorrect wuth out predicitions then the F1 score will be between 0 and 1 inclusive
+
+#If we break down the F1 score we can see that it is made up of only precision and sensitivity.
+# 0 <= precision <=1
+#   If we guess everything correct then the TP and TN sections will only have values
+#    TP/(TP + 0) = TP/TP = 1
+#   If we guess everything incorrectly then the FP and FN sections will only have values
+#    0/(0 + FP) = 0/FP = 0
+
+#The same logic goes for sensitiviy
+# 0<= sensitivity <= 1
+#   If we guess everything correct then the TP and TN sections will only have values
+#    TP/(TP + 0) = TP/TP = 1
+#   If we guess everything incorrectly then the FP and FN sections will only have values
+#    0/(0 + FN) = 0/FN = 0  
+
+#If we look at the extreme cases of the precision and sensitivity
+# precision = 1 and sensitivity = 1
+#  F1 = 2(precision)(sensitivty)/(precision + sensitivity) = 2(1)(1)/(1 + 1) = 2/2 = 1
+# precision = 0 and sensitivity = 0
+#  F1 = 2(precision)(sensitivty)/(precision + sensitivity) = 2(0)(0)/(0 + 0) = 0/0 = DNE
+# precision = 1 and sensitivity = 0
+#  F1 = 2(precision)(sensitivty)/(precision + sensitivity) = 2(1)(0)/(1 + 0) = 0/1 = 0
+# precision = 0 and sensitivity = 1
+#  F1 = 2(precision)(sensitivty)/(precision + sensitivity) = 2(0)(1)/(0 + 1) = 0/1 = 0 
+
+
+#ROC Curve
+ROC <- function(data)
+{
+  data1 = data
+  thresholds <- seq(0,1,0.01)
+  Y <- c()
+  X <- c()
+  for (threshod in thresholds) {
+    data1$scored.class <- ifelse(data1$scored.probability > threshod,1,0)
+    X <- append(X,1-spec(data1))
+    Y <- append(Y,sens(data1))
+    }
+  df <- data.frame(X=X,Y=Y)
+  df <- na.omit(df)
+  g <- ggplot(df,aes(X,Y)) + geom_line() + ggtitle('ROC Curve') +
+    xlab('Specificity') + ylab('Sensitivity')
+  height = (df$Y[-1]+df$Y[-length(df$Y)])/2
+  width = -diff(df$X)
+  area = sum(height*width)
+  return(list(Plot =g,AUC = area))
+}
+
+ROCcustom <- ROC(data)
+
+
+
+
+##Caret Package
+confusionMatrix(as.factor(data$scored.class), as.factor(data$class), positive = "1")
+sensitivity
+specificity
+acc
+
+##pROC 
+rc <- roc(as.factor(data$class) ~ data$scored.probability)
+rcplot <- plot(rc,main='ROC Curve')
+rc$auc
+
+```
+
+
