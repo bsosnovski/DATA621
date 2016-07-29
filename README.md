@@ -1,2 +1,2 @@
 # DATA621
-Business Analytics and Data Mining
+Business Analytics and Data Mining @ CUNY MSDA
