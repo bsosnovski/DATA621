@@ -1,0 +1,137 @@
+---
+title: "hw4_cjf"
+author: "Chris Fenton"
+date: "July 4, 2016"
+output: html_document
+---
+Libraries:
+```{r}
+library(stringr)
+library(PerformanceAnalytics)
+library(aod)
+library(ggplot2)
+library(Rcpp)
+library(Amelia)
+```
+
+Loading the data:
+
+```{r}
+ins <- read.csv('insurance_training_data.csv',na.strings=c("","NA"),stringsAsFactors = FALSE)
+```
+
+# Data Exploration
+
+
+
+```{r}
+#check for missing values
+sapply(ins, function(x) sum(is.na(x)))
+
+```
+There are 2116 incomplete observations (missing at least one variable value), these will need to either be imputed or dropped.
+
+```{r}
+
+#chart.Correlation(ins[,-c(9,11,12,13,14,16,19,20,23,26)])
+```
+# Data Transformation
+
+
+Converting the money character fields to numeric.
+```{r}
+blue_book <- unname(sapply(ins$BLUEBOOK, str_replace_all, '[,$]', ''))
+blue_book <- as.numeric(blue_book)
+
+income <- unname(sapply(ins$INCOME, str_replace_all, '[,$]', ''))
+income <- as.numeric(income)
+
+home_val <- unname(sapply(ins$HOME_VAL, str_replace_all, '[,$]', ''))
+home_val <- as.numeric(home_val)
+
+old_claim <- unname(sapply(ins$OLDCLAIM, str_replace_all, '[,$]', ''))
+old_claim <- as.numeric(old_claim)
+
+ins$BLUEBOOK <- blue_book
+ins$INCOME <- income
+ins$HOME_VAL <- home_val
+ins$OLDCLAIM <- old_claim
+```
+
+Converting the categoricals to factors:
+```{r}
+ins$CAR_TYPE <- factor(ins$CAR_TYPE)
+ins$CAR_USE <- factor(ins$CAR_USE)
+ins$EDUCATION <- factor(ins$EDUCATION)
+ins$JOB <- factor(ins$JOB)
+ins$MSTATUS <- factor(ins$MSTATUS)
+ins$PARENT1 <- factor(ins$PARENT1)
+ins$RED_CAR <- factor(ins$RED_CAR)
+ins$REVOKED <- factor(ins$REVOKED)
+ins$SEX <- factor(ins$SEX)
+ins$URBANICITY <- factor(ins$URBANICITY)
+```
+
+Create numeric data frame:
+```{r}
+ins_num <- ins[,-c(1,9,11,12,13,14,16,19,20,23,26)]
+```
+
+
+
+# Multiple Linear Regression Model to Predict TARGET_AMT
+
+Only look at observations that paid out.
+```{r}
+ins_payout <- subset(ins, TARGET_AMT != 0)
+```
+
+Adding log of Target Amount
+```{r}
+ins_payout$TARGET_AMT_LOG <- log(ins_payout$TARGET_AMT)
+ins_payout$BLUEBOOK_LOG <- log(ins_payout$BLUEBOOK)
+ins_payout$INCOME_LOG <- log(ins_payout$INCOME)
+
+ins_payout$INCOME_LOG <- log(ins_payout$INCOME)
+
+```
+
+
+Check to confirm that they were all in crashes.
+```{r}
+ins_payout2 <- ins[ins$TARGET_AMT != 0 & ins$TARGET_FLAG == 1,]
+```
+
+Look to see what variables have linear relationship with TARGET_AMT, thus eligible to be used/transformed into a regression model.
+```{r}
+plot(ins_payout$YOJ, ins_payout$TARGET_AMT)
+
+```
+
+
+```{r}
+blue_book_model_log <- lm(TARGET_AMT_LOG ~ BLUEBOOK_LOG, data=ins_payout)
+blue_book_model_2 <- lm(TARGET_AMT_LOG ~ BLUEBOOK_LOG + CAR_AGE + CAR_TYPE, data=ins_payout)
+
+summary(blue_book_model_log)
+summary(blue_book_model_2)
+```
+
+The variables `CAR_AGE` and `CAR_TYPE` were indidcated as "probably effect[ing] the payout if there is a crash" in the dataset description. However, they are not found to be signficantly impacting the `TARGET_AMT` variable. Furthermore, the adjusted R-Squared is marginally higher without these variables. Thus `blue_book_model_log` is the better model to proceed with. 
+
+Verifying the assumptions of `blue_book_model_log`:
+
+Linearity:
+
+```{r}
+plot(ins_payout$BLUEBOOK_LOG, ins_payout$TARGET_AMT_LOG)
+
+cor(ins_payout$BLUEBOOK_LOG, ins_payout$INCOME_LOG)
+
+```
+
+Normality, homoscedasticity, and independence of residuals:
+
+```{r}
+plot(blue_book_model_log$residuals)
+```

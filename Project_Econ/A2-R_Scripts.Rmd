@@ -1,0 +1,13 @@
+---
+title: "Appendix II - R Statistical Programming Scripts"
+author: Daniel Brooks (daniel.brooks@spsmail.cuny.edu), Daniel Fanelli (daniel.fanelli@spsmail.cuny.edu),
+  Christopher Fenton (christopher.fenton@spsmail.cuny.edu), James Hamski (james.hamski@spsmail.cuny.edu),
+  Youqing Xiang (youqing.xiang@spsmail.cuny.edu)
+date: "July 15, 2016"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+

@@ -1,0 +1,559 @@
+---
+title: "HW4_YQ"
+author: "Youqing Xiang"
+date: "July 7, 2016"
+output: pdf_document
+---
+# Data Exploration
+
+```{r}
+library(PerformanceAnalytics)
+library(ggplot2)
+library(gridExtra)
+library(knitr)
+library(lattice)
+library(caret)
+library(tidyr)
+library(dplyr)
+library(pROC)
+library(car)
+
+data <- read.csv('insurance_training_data.csv')
+summary(data)
+dim(data)
+```
+
+# Data Preparation
+## Deal with Missing Data and Nonsense Data
+```{r}
+# AGE
+data <- data[!is.na(data$AGE),]
+
+# YOJ
+dataN <- data[!is.na(data$YOJ),]
+
+# CAR_AGE
+dataN <- dataN[!is.na(dataN$CAR_AGE),]
+dataN <- dataN[dataN$CAR_AGE >= 0,]
+```
+
+## Data Transformation
+### KIDSDRIV
+
+```{r}
+# Before transformation
+p1 <- ggplot(dataN, aes(KIDSDRIV)) + geom_histogram()
+p2 <- ggplot(dataN, aes(factor(TARGET_FLAG), KIDSDRIV)) + geom_boxplot()
+p3 <- ggplot(dataN, aes(factor(KIDSDRIV), TARGET_AMT)) + geom_boxplot()
+grid.arrange(p1,p2,p3,ncol=3,nrow=1)
+
+# Data transformation
+dataN$KIDSDRIV_N <- ifelse(dataN$KIDSDRIV == 0, 0, 1)
+dataN$KIDSDRIV_N <- as.factor(dataN$KIDSDRIV_N)
+
+# After transformation
+t <- as.data.frame(table(KIDSDRIV_N=dataN$KIDSDRIV_N, TARGET_FLAG=dataN$TARGET_FLAG))
+p1 <- ggplot(t, aes(factor(TARGET_FLAG), Freq)) + geom_bar(aes(fill=KIDSDRIV_N),stat='identity',position=position_dodge())
+p2 <- ggplot(dataN, aes(factor(KIDSDRIV_N), TARGET_AMT)) + geom_boxplot()
+grid.arrange(p1,p2,ncol=2,nrow=1)
+```
+
+### HOMEKIDS
+
+```{r}
+# Before transformation
+p1 <- ggplot(dataN, aes(HOMEKIDS)) + geom_histogram()
+p2 <- ggplot(dataN, aes(factor(TARGET_FLAG), HOMEKIDS)) + geom_boxplot()
+p3 <- ggplot(dataN, aes(factor(HOMEKIDS), TARGET_AMT)) + geom_boxplot()
+grid.arrange(p1,p2,p3,ncol=3,nrow=1)
+
+# Data transformation
+dataN$HOMEKIDS_N <- ifelse(dataN$HOMEKIDS == 0, 0, 1)
+dataN$HOMEKIDS_N <- as.factor(dataN$HOMEKIDS_N)
+
+# After transformation
+t <- as.data.frame(table(HOMEKIDS_N=dataN$HOMEKIDS_N, TARGET_FLAG=dataN$TARGET_FLAG))
+p1 <- ggplot(t, aes(factor(TARGET_FLAG), Freq)) + geom_bar(aes(fill=HOMEKIDS_N),stat='identity', position=position_dodge())
+p2 <- ggplot(dataN, aes(factor(HOMEKIDS_N), TARGET_AMT)) + geom_boxplot()
+grid.arrange(p1,p2,ncol=2,nrow=1)
+```
+
+### INCOME
+
+```{r}
+dataN$INCOME <- as.numeric(dataN$INCOME)
+```
+
+### HOME_VAL
+
+```{r}
+dataN$HOME_VAL <- as.numeric(dataN$HOME_VAL)
+```
+
+### EDUCATION
+
+```{r}
+# Before transformation
+t <- as.data.frame(table(EDUCATION=dataN$EDUCATION, TARGET_FLAG=dataN$TARGET_FLAG))
+p1 <- ggplot(t, aes(factor(TARGET_FLAG), Freq)) + geom_bar(aes(fill=EDUCATION),stat='identity',
+                                                           position=position_dodge())
+p2 <- ggplot(dataN, aes(factor(EDUCATION), TARGET_AMT)) + geom_boxplot()
+grid.arrange(p1,p2,ncol=2,nrow=1)
+
+# Data transformation
+dataN$EDUCATION_N <- ifelse(dataN$EDUCATION %in% c('<High School','z_High School'), 0, 1)
+dataN$EDUCATION_N <- as.factor(dataN$EDUCATION_N)
+
+# After transformation
+t <- as.data.frame(table(EDUCATION_N=dataN$EDUCATION_N, TARGET_FLAG=dataN$TARGET_FLAG))
+p1 <- ggplot(t, aes(factor(TARGET_FLAG), Freq)) + geom_bar(aes(fill=EDUCATION_N),stat='identity',
+                                                           position=position_dodge())
+p2 <- ggplot(dataN, aes(factor(EDUCATION_N), TARGET_AMT)) + geom_boxplot()
+grid.arrange(p1,p2,ncol=2,nrow=1)
+```
+
+### JOB
+
+```{r}
+# Before transformation
+t <- as.data.frame(table(JOB=dataN$JOB, TARGET_FLAG=dataN$TARGET_FLAG))
+p1 <- ggplot(t, aes(factor(TARGET_FLAG), Freq)) + geom_bar(aes(fill=JOB),stat='identity',
+                                                           position=position_dodge())
+p2 <- ggplot(dataN, aes(factor(JOB), TARGET_AMT)) + geom_boxplot()
+grid.arrange(p1,p2,ncol=2,nrow=1)
+
+# Data transformation
+dataN$JOB_N <- ifelse(dataN$JOB %in% c('Doctor','Lawyer','Manager','Professional'), 1, 0)
+dataN$JOB_N <- as.factor(dataN$JOB_N)
+
+# After transformation
+t <- as.data.frame(table(JOB_N=dataN$JOB_N, TARGET_FLAG=dataN$TARGET_FLAG))
+p1 <- ggplot(t, aes(factor(TARGET_FLAG), Freq)) + geom_bar(aes(fill=JOB_N),stat='identity',
+                                                           position=position_dodge())
+p2 <- ggplot(dataN, aes(factor(JOB_N), TARGET_AMT)) + geom_boxplot()
+grid.arrange(p1,p2,ncol=2,nrow=1)
+```
+
+### BLUEBOOK
+
+```{r}
+dataN$BLUEBOOK <- as.numeric(dataN$BLUEBOOK)
+```
+
+### TIF
+
+```{r}
+# Before transformation
+p1 <-  ggplot(dataN, aes(TIF)) + geom_histogram()
+p2 <- ggplot(dataN, aes(factor(TARGET_FLAG), TIF)) + geom_boxplot()
+p3 <- ggplot(dataN, aes(TIF, TARGET_AMT)) + geom_point()
+grid.arrange(p1,p2,p3,ncol=3,nrow=1)
+
+ggplot(dataN, aes(x=TIF)) + geom_density(aes(colour=factor(TARGET_FLAG)))
+
+# Data transformation
+dataN$TIF_N <- ifelse(dataN$TIF > 1, 1, 0)
+dataN$TIF_N <- as.factor(dataN$TIF_N)
+
+# After transformation
+t <- as.data.frame(table(TIF_N=dataN$TIF_N, TARGET_FLAG=dataN$TARGET_FLAG))
+p1 <- ggplot(t, aes(factor(TARGET_FLAG), Freq)) + geom_bar(aes(fill=TIF_N),stat='identity',
+                                                           position=position_dodge())
+p2 <- ggplot(dataN, aes(factor(TIF_N), TARGET_AMT)) + geom_boxplot()
+grid.arrange(p1,p2,ncol=2,nrow=1)
+```
+
+### CAR_TYPE
+
+```{r}
+# Before transformation
+t <- as.data.frame(table(CAR_TYPE=dataN$CAR_TYPE, TARGET_FLAG=dataN$TARGET_FLAG))
+p1 <- ggplot(t, aes(factor(TARGET_FLAG), Freq)) + geom_bar(aes(fill=CAR_TYPE),stat='identity',
+                                                           position=position_dodge())
+p2 <- ggplot(dataN, aes(factor(CAR_TYPE), TARGET_AMT)) + geom_boxplot()
+grid.arrange(p1,p2,ncol=2,nrow=1)
+
+# Data transformation
+dataN$CAR_TYPE_N <- ifelse(dataN$CAR_TYPE == 'Minivan', 0, 1)
+dataN$CAR_TYPE_N <- as.factor(dataN$CAR_TYPE_N)
+
+# After transformation
+t <- as.data.frame(table(CAR_TYPE_N=dataN$CAR_TYPE_N, TARGET_FLAG=dataN$TARGET_FLAG))
+p1 <- ggplot(t, aes(factor(TARGET_FLAG), Freq)) + geom_bar(aes(fill=CAR_TYPE_N),stat='identity',
+                                                           position=position_dodge())
+p2 <- ggplot(dataN, aes(factor(CAR_TYPE_N), TARGET_AMT)) + geom_boxplot()
+grid.arrange(p1,p2,ncol=2,nrow=1)
+```
+
+### OLDCLAIM
+
+```{r}
+# Before transformation
+dataN$OLDCLAIM <- as.numeric(dataN$OLDCLAIM)
+p1 <-  ggplot(dataN, aes(OLDCLAIM)) + geom_histogram()
+p2 <- ggplot(dataN, aes(factor(TARGET_FLAG), OLDCLAIM)) + geom_boxplot()
+p3 <- ggplot(dataN, aes(OLDCLAIM, TARGET_AMT)) + geom_point()
+grid.arrange(p1,p2,p3,ncol=3,nrow=1)
+
+ggplot(dataN, aes(x=OLDCLAIM)) + geom_density(aes(colour=factor(TARGET_FLAG))) + 
+  geom_vline(xintercept = 150)
+
+# Data transformation
+dataN$OLDCLAIM_N <- ifelse(dataN$OLDCLAIM > 150, 1, 0)
+dataN$OLDCLAIM_N <- as.factor(dataN$OLDCLAIM_N)
+
+# After transformation
+t <- as.data.frame(table(OLDCLAIM_N=dataN$OLDCLAIM_N, TARGET_FLAG=dataN$TARGET_FLAG))
+p1 <- ggplot(t, aes(factor(TARGET_FLAG), Freq)) + geom_bar(aes(fill=OLDCLAIM_N),stat='identity',position=position_dodge())
+
+p2 <- ggplot(dataN, aes(factor(OLDCLAIM_N), TARGET_AMT)) + geom_boxplot()
+grid.arrange(p1,p2,ncol=2,nrow=1)
+```
+
+### CLM_FREQ
+
+```{r}
+# Before transformation
+t <- as.data.frame(table(CLM_FREQ=dataN$CLM_FREQ, TARGET_FLAG=dataN$TARGET_FLAG))
+p1 <- ggplot(t, aes(factor(TARGET_FLAG), Freq)) + geom_bar(aes(fill=CLM_FREQ),stat='identity',
+                                                           position=position_dodge())
+p2 <- ggplot(dataN, aes(factor(CLM_FREQ), TARGET_AMT)) + geom_boxplot()
+grid.arrange(p1,p2,ncol=2,nrow=1)
+
+# Data transformation
+dataN$CLM_FREQ_N <- ifelse(dataN$CLM_FREQ == 0, 0, 1)
+dataN$CLM_FREQ_N <- as.factor(dataN$CLM_FREQ_N)
+
+# After transformation
+t <- as.data.frame(table(CLM_FREQ_N=dataN$CLM_FREQ_N, TARGET_FLAG=dataN$TARGET_FLAG))
+p1 <- ggplot(t, aes(factor(TARGET_FLAG), Freq)) + geom_bar(aes(fill=CLM_FREQ_N),stat='identity',position=position_dodge())
+p2 <- ggplot(dataN, aes(factor(CLM_FREQ_N), TARGET_AMT)) + geom_boxplot()
+grid.arrange(p1,p2,ncol=2,nrow=1)
+```
+
+### MVR_PTS
+
+```{r}
+# Before transformation
+t <- as.data.frame(table(MVR_PTS=dataN$MVR_PTS, TARGET_FLAG=dataN$TARGET_FLAG))
+p1 <- ggplot(t, aes(factor(TARGET_FLAG), Freq)) + geom_bar(aes(fill=MVR_PTS),stat='identity',
+                                                           position=position_dodge())
+p2 <- ggplot(dataN, aes(factor(MVR_PTS), TARGET_AMT)) + geom_boxplot()
+grid.arrange(p1,p2,ncol=2,nrow=1)
+
+# Data transformation
+dataN$MVR_PTS_N <- ifelse(dataN$MVR_PTS %in% c(0,1), 0, 1)
+dataN$MVR_PTS_N <- as.factor(dataN$MVR_PTS_N)
+
+# After transformation
+t <- as.data.frame(table(MVR_PTS_N=dataN$MVR_PTS_N, TARGET_FLAG=dataN$TARGET_FLAG))
+p1 <- ggplot(t, aes(factor(TARGET_FLAG), Freq)) + geom_bar(aes(fill=MVR_PTS_N),stat='identity',
+                                                           position=position_dodge())
+p2 <- ggplot(dataN, aes(factor(MVR_PTS_N), TARGET_AMT)) + geom_boxplot()
+grid.arrange(p1,p2,ncol=2,nrow=1)
+```
+
+# Modeling
+## TARGET_FLAG
+### Splitting data for training and testing models
+```{r}
+set.seed(45)
+inTrain_1 <- createDataPartition(y=dataN$TARGET_FLAG, p=0.7,list=FALSE)
+training_1 <- dataN[inTrain_1,]
+testing_1 <- dataN[-inTrain_1,]
+```
+
+### Model 1 - Using original variables
+```{r}
+training_1a <- select(training_1, -c(KIDSDRIV_N,HOMEKIDS_N,EDUCATION_N,JOB_N,TIF_N,CAR_TYPE_N,OLDCLAIM_N,CLM_FREQ_N,MVR_PTS_N))
+m11 <- glm(TARGET_FLAG ~ . -INDEX-TARGET_AMT, data=training_1a,family = binomial(link='probit'))
+#summary(m11)
+m12 <- update(m11, .~. -AGE-INCOME-BLUEBOOK-RED_CAR-CAR_AGE-CLM_FREQ-TIF)
+#summary(m12)
+TARGET_FLAG_m1 <- m12
+summary(TARGET_FLAG_m1)
+```
+
+### Model 2 - Using transformed variables
+```{r}
+training_1b <- select(training_1, -c(KIDSDRIV,HOMEKIDS,EDUCATION,JOB,TIF,CAR_TYPE,OLDCLAIM,CLM_FREQ,MVR_PTS))
+m21 <- glm(TARGET_FLAG ~ . -INDEX-TARGET_AMT, data=training_1b,family = binomial(link='probit'))
+#summary(m21)
+m22 <- update(m21, .~. -AGE-INCOME-PARENT1-SEX-BLUEBOOK-RED_CAR-CAR_AGE-OLDCLAIM_N)
+#summary(m22)
+TARGET_FLAG_m2 <- m22
+summary(TARGET_FLAG_m2)
+```
+
+### Model 3 - Combining both of original and transformed variables
+```{r}
+m31 <- glm(TARGET_FLAG ~ KIDSDRIV_N+HOMEKIDS_N+YOJ+HOME_VAL+PARENT1+MSTATUS+SEX+
+             EDUCATION_N+JOB_N+TIF_N+CAR_USE+CAR_TYPE_N+OLDCLAIM+REVOKED+MVR_PTS+
+             URBANICITY, data=training_1,family = binomial(link='probit'))
+#summary(m31)
+m32 <- update(m31, .~. -SEX-PARENT1)
+#summary(m32)
+TARGET_FLAG_m3 <- m32
+summary(TARGET_FLAG_m3)
+```
+
+## TARGET_AMT
+### Splitting data for training and testing models
+```{r}
+set.seed(1234)
+inTrain_2 <- createDataPartition(y=dataN$TARGET_AMT, p=0.7,list=FALSE)
+training_2 <- dataN[inTrain_2,]
+testing_2 <- dataN[-inTrain_2,]
+```
+
+### Model 1 - Using original variables
+```{r}
+training_2a <- select(training_2, -c(KIDSDRIV_N,HOMEKIDS_N,EDUCATION_N,JOB_N,TIF_N,
+                                     CAR_TYPE_N,OLDCLAIM_N,CLM_FREQ_N,MVR_PTS_N))
+M11 <- lm( TARGET_AMT~ .-TARGET_FLAG-INDEX, data=training_2a)
+#summary(M11)
+M12 <- update(M11,.~.-AGE-HOMEKIDS-YOJ-INCOME-SEX-EDUCATION-BLUEBOOK-RED_CAR-OLDCLAIM-CLM_FREQ)
+#summary(M12)
+TARGET_AMT_m1 <- M12
+summary(TARGET_AMT_m1)
+```
+
+### Model 2 - Using transformed variables
+```{r}
+training_2b <- select(training_2, -c(KIDSDRIV,HOMEKIDS,EDUCATION,JOB,TIF,CAR_TYPE,
+                                     OLDCLAIM,CLM_FREQ,MVR_PTS))
+M21 <- lm( TARGET_AMT~ .-TARGET_FLAG-INDEX, data=training_2b)
+#summary(M21)
+M22 <- update(M21, .~.-AGE-YOJ-INCOME-PARENT1-SEX-BLUEBOOK-RED_CAR-HOMEKIDS_N-
+                EDUCATION_N-OLDCLAIM_N-CLM_FREQ_N)
+#summary(M22)
+TARGET_AMT_m2 <- M22
+summary(TARGET_AMT_m2)
+```
+
+### Model 3 - Combining both of original and transformed variables
+```{r}
+M31 <- lm( TARGET_AMT~HOME_VAL+MSTATUS+TRAVTIME+CAR_USE+REVOKED+CAR_AGE+URBANICITY+
+             KIDSDRIV+JOB_N+TIF+CAR_TYPE_N+MVR_PTS+PARENT1, data=training_2)
+#summary(M31)
+TARGET_AMT_m3 <- M31
+summary(TARGET_AMT_m3)
+```
+
+# Model Selection
+## TARGET_FLAG
+### key model statistics measurements
+
+```{r}
+# Model1
+predict_1 <- predict(TARGET_FLAG_m1, newdata=testing_1, type='response')
+glm.pred1 = ifelse(predict_1 > 0.5, 1, 0)
+cM1 <- confusionMatrix(glm.pred1, testing_1$TARGET_FLAG, positive = "1")
+
+# Model2
+predict_2 <- predict(TARGET_FLAG_m2, newdata=testing_1, type='response')
+glm.pred2 = ifelse(predict_2 > 0.5, 1, 0)
+cM2 <- confusionMatrix(glm.pred2, testing_1$TARGET_FLAG, positive = "1")
+
+# Model3
+predict_3 <- predict(TARGET_FLAG_m3,newdata=testing_1,type='response')
+glm.pred3 = ifelse(predict_3 > 0.5, 1, 0)
+cM3 <- confusionMatrix(glm.pred3, testing_1$TARGET_FLAG, positive = "1")
+```
+
+```{r echo=FALSE}
+df1b <- as.data.frame(cM1$byClass)
+df1a <- as.data.frame(cM1$overall)
+colnames(df1a) <- 'Model1'
+colnames(df1b) <- 'Model1'
+df1 <- rbind(df1a, df1b)
+
+df2b <- as.data.frame(cM2$byClass)
+df2a <- as.data.frame(cM2$overall)
+colnames(df2a) <- 'Model2'
+colnames(df2b) <- 'Model2'
+df2 <- rbind(df2a, df2b)
+
+df3b <- as.data.frame(cM3$byClass)
+df3a <- as.data.frame(cM3$overall)
+colnames(df3a) <- 'Model3'
+colnames(df3b) <- 'Model3'
+df3 <- rbind(df3a, df3b)
+
+df <- cbind(df1,df2,df3)
+kable(df)
+```
+
+### ROC Curve and Area Under the Curve
+
+```{r}
+rc1 <- roc(factor(TARGET_FLAG) ~ predict_1, data=testing_1)
+rc2 <- roc(factor(TARGET_FLAG) ~ predict_2, data=testing_1)
+rc3 <- roc(factor(TARGET_FLAG) ~ predict_3, data=testing_1)
+
+plot(rc1,main='Model 1 - ROC Curve')
+plot(rc2,main='Model 2 - ROC Curve')
+plot(rc3,main='Model 3 - ROC Curve')
+
+
+model <- c('Model 1', 'Model 2', 'Model 3')
+area <- c(auc(rc1),auc(rc2),auc(rc3))
+df <- data.frame(Model=model,AUC=area)
+kable(df,caption='Area under the curve')
+```
+
+### Log-likelihood/AIC/BIC
+
+```{r}
+# Log-likelihood
+LL.1 <- logLik(TARGET_FLAG_m1)
+LL.2 <- logLik(TARGET_FLAG_m2)
+LL.3 <- logLik(TARGET_FLAG_m3)
+LL <- rbind(LL.1, LL.2, LL.3) %>% round(2)
+```
+
+```{r}
+# Akaike Information Criterion
+AIC.1 <- AIC(TARGET_FLAG_m1)
+AIC.2 <- AIC(TARGET_FLAG_m2)
+AIC.3 <- AIC(TARGET_FLAG_m3)
+AIC <- rbind(AIC.1, AIC.2, AIC.3) %>% round(2)
+```
+
+```{r}
+# BIC
+BIC.1 <- BIC(TARGET_FLAG_m1)
+BIC.2 <- BIC(TARGET_FLAG_m2)
+BIC.3 <- BIC(TARGET_FLAG_m3)
+BIC <- rbind(BIC.1, BIC.2, BIC.3) %>% round(2)
+```
+
+```{r}
+eval.table <- cbind(LL, AIC, BIC)
+
+rownames(eval.table) <- c("Model 1", "Model 2", "Model 3")
+colnames(eval.table) <- c("Log Likelihood", "AIC", "BIC")
+
+kable(eval.table)
+```
+
+### Checking variance inflation factors
+```{r}
+V1 <- vif(TARGET_FLAG_m1)
+V2 <- vif(TARGET_FLAG_m2)
+V3 <- vif(TARGET_FLAG_m3)
+V1; V2; V3
+```
+
+## TARGET_AMT
+### Key model statistics results
+```{r}
+col_mdl_names <- c("Model 1", "Model 2", "Model 3")
+
+#Calculate mean squared errors for each model
+mse <- function(sm) 
+    mean(sm$residuals^2)
+
+if(FALSE){
+  cat("Mean Squared Error of Model 1:")
+  mse(TARGET_AMT_m1)
+  cat("Mean Squared Error of Model 2:")
+  mse(TARGET_AMT_m2)
+  cat("Mean Squared Error of Model 3:")
+  mse(TARGET_AMT_m3)
+}
+
+col_mse <- c(mse(TARGET_AMT_m1),mse(TARGET_AMT_m2),mse(TARGET_AMT_m3))
+
+# Calculate R^2 for each model:
+if(FALSE){
+  cat("R Squared of Model 1:")
+  summary(TARGET_AMT_m1)$r.squared 
+  cat("R Squared of Model 2:")
+  summary(TARGET_AMT_m2)$r.squared 
+  cat("R Squared of Model 3")
+  summary(TARGET_AMT_m3)$r.squared 
+}
+
+col_r_sq <- c(summary(TARGET_AMT_m1)$r.squared, summary(TARGET_AMT_m2)$r.squared, summary(TARGET_AMT_m3)$r.squared)
+
+if(FALSE){
+  cat("F-Stat of Model 1:")
+  summary(aov(TARGET_AMT_m1))[[1]]$F[1]
+  cat("F-Stat of Model 2:")
+  summary(aov(TARGET_AMT_m2))[[1]]$F[1]
+  cat("F-Stat of Model 3")
+  summary(aov(TARGET_AMT_m1))[[1]]$F[1]
+}
+
+col_f_stat <- c(summary(aov(TARGET_AMT_m1))[[1]]$F[1], summary(aov(TARGET_AMT_m2))[[1]]$F[1], summary(aov(TARGET_AMT_m3))[[1]]$F[1])
+summary_df <- data.frame(cbind(col_mdl_names, col_mse, col_r_sq, col_f_stat))
+
+colnames(summary_df) <- c("Model Name", "Mean Sq. Error", "R Squared", "F Stat")
+kable(summary_df)
+```
+
+### Residual plots for each model
+
+```{r}
+# Model 1
+qqnorm(TARGET_AMT_m1$residuals)
+qqline(TARGET_AMT_m1$residuals)
+INDEX <- seq(1,length(training_2$TARGET_AMT))
+plot(TARGET_AMT_m1$residuals ~ INDEX,
+     xlab='',
+     ylab='Residuals',
+     main='Residual Plot of Model 1')
+abline(h=0,lty=3)
+hist(TARGET_AMT_m1$residuals)
+
+# Model 2
+qqnorm(TARGET_AMT_m2$residuals)
+qqline(TARGET_AMT_m2$residuals)
+INDEX <- seq(1,length(training_2$TARGET_AMT))
+plot(TARGET_AMT_m2$residuals ~ INDEX,
+     xlab='',
+     ylab='Residuals',
+     main='Residual Plot of Model 2')
+abline(h=0,lty=3)
+hist(TARGET_AMT_m2$residuals)
+
+# Model 3
+qqnorm(TARGET_AMT_m3$residuals)
+qqline(TARGET_AMT_m3$residuals)
+INDEX <- seq(1,length(training_2$TARGET_AMT))
+plot(TARGET_AMT_m3$residuals ~ INDEX,
+     xlab='',
+     ylab='Residuals',
+     main='Residual Plot of Model 3')
+abline(h=0,lty=3)
+hist(TARGET_AMT_m3$residuals)
+```
+
+### Using testing data to check the predicting result
+```{r}
+actual <- testing_2$TARGET_AMT
+new_data = select(testing_2, -TARGET_AMT)
+predicted1 <- predict(TARGET_AMT_m1,newdata=new_data)
+predicted2 <- predict(TARGET_AMT_m2,newdata=new_data)
+predicted3 <- predict(TARGET_AMT_m3,newdata=new_data)
+
+INDEX <- seq(1,length(testing_2$TARGET_AMT))
+result1 <- data.frame(INDEX=INDEX, actual=actual, predicted1=predicted1)
+result2 <- data.frame(INDEX=INDEX, actual=actual, predicted2=predicted2)
+result3 <- data.frame(INDEX=INDEX, actual=actual, predicted3=predicted3)
+result1 <- gather(result1,Group,TARGET_AMT,2:3)
+result2 <- gather(result2,Group,TARGET_AMT,2:3)
+result3 <- gather(result3,Group,TARGET_AMT,2:3)
+p1 <- ggplot(data=result1,aes(INDEX,TARGET_AMT)) + 
+  geom_point(aes(colour = factor(Group))) + ggtitle('Model 1')
+p2 <- ggplot(data=result2,aes(INDEX,TARGET_AMT)) + 
+  geom_point(aes(colour = factor(Group))) + ggtitle('Model 2')
+p3 <- ggplot(data=result3,aes(INDEX,TARGET_AMT)) + 
+  geom_point(aes(colour = factor(Group))) + ggtitle('Model 3')
+p1; p2; p3
+```
+
+Overall, for predicting `TARGET_FLAG` Model 2 handled **Multicollinearity** issuse appropriately. Meanwhile, Model 2 slightly stands out after considering Accuracy, Sensitivity, Specificity, AUC, Log-likelihood number, AIC and BIC. 
+
+For predicting `TARGET_AMT`, all of three models are not good enough in this case. More advanced modeling techniques might be helpful, although intution tells me that it would be very difficult to build a good model to predict `TARGET_AMT`. How much the cost would be in car accident is a highly random event.

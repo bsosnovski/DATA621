@@ -1,0 +1,326 @@
+---
+title: "HW-3-YQ"
+author: "Youqing Xiang"
+date: "June 25, 2016"
+output: pdf_document
+---
+# DATA EXPLORATION
+
+```{r, message=FALSE, warning=FALSE,echo=FALSE}
+library(ggplot2)
+library(gridExtra)
+library(knitr)
+library(caret)
+library(PerformanceAnalytics)
+library(lattice)
+library(caret)
+library(dplyr)
+library(knitr)
+library(pROC)
+
+# Load the data
+crime <- read.csv('crime-training-data.csv')
+
+# Summary of data
+summary(crime)
+dim(crime)
+chart.Correlation(crime)
+
+# Histogram of one variable
+zn_hist <- ggplot(crime, aes(zn)) + geom_histogram()
+indus_hist <- ggplot(crime, aes(indus)) + geom_histogram()
+nox_hist <- ggplot(crime, aes(nox)) + geom_histogram()
+rm_hist <- ggplot(crime, aes(rm)) + geom_histogram()
+age_hist <- ggplot(crime, aes(age)) + geom_histogram()
+dis_hist <- ggplot(crime, aes(dis)) + geom_histogram()
+rad_hist <- ggplot(crime, aes(rad)) + geom_histogram()
+tax_hist <- ggplot(crime, aes(tax)) + geom_histogram()
+ptratio_hist <- ggplot(crime, aes(ptratio)) + geom_histogram()
+black_hist <- ggplot(crime, aes(black)) + geom_histogram()
+lstat_hist <- ggplot(crime, aes(lstat)) + geom_histogram()
+medv_hist <- ggplot(crime, aes(medv)) + geom_histogram()
+
+# Boxplot: one variable ~ target
+zn_bp <- ggplot(crime, aes(factor(target), zn)) + geom_boxplot()
+indus_bp <- ggplot(crime, aes(factor(target), indus)) + geom_boxplot()
+nox_bp <- ggplot(crime, aes(factor(target), nox)) + geom_boxplot()
+rm_bp<- ggplot(crime, aes(factor(target), rm)) + geom_boxplot()
+age_bp <- ggplot(crime, aes(factor(target), age)) + geom_boxplot()
+dis_bp <- ggplot(crime, aes(factor(target), dis)) + geom_boxplot()
+rad_bp <- ggplot(crime, aes(factor(target), rad)) + geom_boxplot()
+tax_bp <- ggplot(crime, aes(factor(target), tax)) + geom_boxplot()
+ptratio_bp <- ggplot(crime, aes(factor(target), ptratio)) + geom_boxplot()
+black_bp <- ggplot(crime, aes(factor(target), black)) + geom_boxplot()
+lstat_bp <- ggplot(crime, aes(factor(target), lstat)) + geom_boxplot()
+medv_bp <- ggplot(crime, aes(factor(target), medv)) + geom_boxplot()
+
+# Histogram and boxplot showing together
+grid.arrange(zn_hist,zn_bp,indus_hist,indus_bp,nox_hist,nox_bp,ncol=2,nrow=3)
+grid.arrange(rm_hist,rm_bp,age_hist,age_bp,dis_hist,dis_bp,ncol=2,nrow=3)
+grid.arrange(rad_hist,rad_bp,tax_hist,tax_bp,ptratio_hist,ptratio_bp,ncol=2,nrow=3)
+grid.arrange(black_hist,black_bp,lstat_hist,lstat_bp,medv_hist,medv_bp,ncol=2,nrow=3)
+
+# The relationship between chas and target
+t <- as.data.frame(table(Chas=crime$chas, Target=crime$target))
+kable(t)
+```
+
+* For this data set, we have 14 columns (13 variables and 1 predictor) and total 466 observations. Among 13 variables, only `chas` is category data and others are numeric data. And we don't see any missing data.
+* From Scatterplot Matrix, we can see there are strong correlationship among variables, such as `indus` verse `nox` and `lstat` verse `medv`. So, **multicollinearity** is one issue that we have to pay close attention to and PCA analysis should be considered during modeling.
+* From histogram plots of variables and boxplots of variable grouped by predictor, we can see that there are some outliers we might want to deal with. Meanwhile, we could consider to do some data transformation, such as transforming `zn` from numberic to categorcial. In addition, we can tell that some variables could be very important to predict `target`, such as `zn`, `indus`, `dis` and `rad`; `chas` and `rm` might not be very useful.
+
+# DATA PREPARATION
+
+For this data set, we don't see any missing data and obivious nonsense data. So, the section will focus on dealing with some outliers and data transformation.
+
+### 1. zn
+
+```{r}
+ggplot(crime, aes(x=zn)) + geom_density(aes(colour=factor(target))) + xlim(0,100) +
+  geom_vline(xintercept = 3)
+crime$znN <- ifelse(crime$zn > 3, 1, 0)
+crime$znN <- as.factor(crime$znN)
+t <- as.data.frame(table(znN=crime$znN, Target=crime$target))
+kable(t)
+```
+
+From the above density plot, we can see it is worth to try transforming numberic zn variable to a new categorical variable. Here I set up a new variable `znN`: *1* means more than 3% of residential land zoned for large lots (over 25000 square feet) and *0* means less than or equal to 3% of residential land zoned for large lots (over 25000 square feet).
+
+### 2. indus
+
+```{r}
+attach(crime)
+p0 <- ggplot(crime, aes(factor(target), indus)) + geom_boxplot()
+crime <- crime[-which(target==0 & indus > 20),]
+p1 <- ggplot(crime, aes(factor(target), indus)) + geom_boxplot()
+grid.arrange(p0, p1,ncol=2,nrow=1)
+detach(crime)
+```
+
+Here I removed the rows which `indus` is greater than 20 while `target` is 0.
+
+### 3. nox
+Nothing is done with this variable.
+
+### 4. rm
+
+```{r}
+t <- as.data.frame(table(Rm=round(crime$rm), Target=crime$target))
+kable(t)
+```
+
+It looks like there is not a obvious relationship between rm and target. So nothing is done with this variable.
+
+### 5. age
+
+The maxium of `age` is 100 years and the data is strongly right skewed. Although it is possible that the buildings which are older than 100 years were recorded as 100 years, I do nothing due to lacking of detailed information about this variable.
+
+### 6. dis
+
+```{r}
+attach(crime)
+p0 <- ggplot(crime, aes(factor(target), dis)) + geom_boxplot()
+crime <- crime[-which(target==0 & dis > 11),]
+crime <- crime[-which(target==1 & dis > 7.5),]
+p1 <- ggplot(crime, aes(factor(target), dis)) + geom_boxplot()
+grid.arrange(p0, p1, ncol=2,nrow=1)
+detach(crime)
+```
+
+Here I removed the rows which `dis` is greater than 11 while `target` is 0 and the rows which `dis` is greater than 7.5 while `target` is 1.
+
+### 7. rad
+
+```{r}
+ggplot(crime, aes(x=rad)) + geom_density(aes(colour=factor(target))) + xlim(0,100) + geom_vline(xintercept = 7)
+crime$radN <- ifelse(crime$rad > 7, 1, 0)
+crime$radN <- as.factor(crime$radN)
+t <- as.data.frame(table(radN=crime$radN, Target=crime$target))
+kable(t)
+```
+
+Here I applied the same strategy as `zn`. I set up a new variable `radN`: *1* means index of accessibility to radial highways is greater than 7 and *0* means index of accessibility to radial highways is less than or equal to 7.
+
+### 8. tax
+
+```{r}
+p0 <- ggplot(crime, aes(factor(target), tax)) + geom_boxplot()
+p0
+```
+
+For `tax` variable, the outliner I saw in blox plot at data Exploration part was already removed. So, do nothing to this variable here.
+
+### 9. ptratio, black, lstat, medv
+For these variables, I also see outliners on boxplot. But if we try to remove outliners, we would lose more data points. So, nothing is done with them.
+
+### 10. chas
+
+```{r}
+crime$chas <- as.factor(crime$chas)
+```
+
+`chas` is a category variable, so here I changed the data type of `chas`. 
+
+### 11. Summary after data preparation
+
+```{r}
+names(crime)
+dim(crime)
+```
+
+At the end, we removed 14 rows and added 2 new variables: `znN` and `radN`.
+
+# Modeling
+## Split the data into train and test data sets for model1 and model2
+
+```{r}
+set.seed(45)
+inTrain <- createDataPartition(y=crime$target, p=0.7,list=FALSE)
+training <- crime[inTrain,]
+testing <- crime[-inTrain,]
+```
+
+I split the data into `training` for modeling and `testing` for evaluating models.
+
+## Model 1-using the original variances
+
+```{r}
+m11 <- glm(target ~ . -znN-radN, data=training, family = binomial(link='probit'))
+#summary(m11)
+m12 <- update(m11, .~. - zn-chas-rm-dis-black)
+m1 <- m12
+summary(m1)
+```
+
+## Model2 - Using the three new created variances
+```{r}
+m21 <- glm(target ~ .-age-zn-rad, data=training, 
+               family = binomial(link='probit'))
+#summary(m21)
+m22 <- update(m21, .~. - indus-chas-rm-dis-black-znN)
+#summary(m22)
+m23 <- update(m22, .~. -medv)
+#summary(m23)
+m24 <- update(m23, .~. -ptratio)
+m2 <- m24
+summary(m2)
+```
+
+## Model3 - PCA
+```{r}
+crime_pca <- crime[,1:14]
+crime_pca <- select(crime_pca,-chas)
+names(crime_pca)
+target <- crime_pca$target
+A <- as.matrix(select(crime_pca,-target))
+pca <- princomp(A,center=T,scale.=T)
+plot(pca)
+summary(pca)
+pca <- as.data.frame(pca$scores[,1:2])
+crime_pca <- cbind(target=target,pca)
+```
+
+```{r}
+head(crime_pca)
+set.seed(45)
+inTrain_pca <- createDataPartition(y=crime_pca$target, p=0.7,list=FALSE)
+training_pca <- crime_pca[inTrain_pca,]
+testing_pca <- crime_pca[-inTrain_pca,]
+m3 <- glm(target ~ ., data=training_pca)
+summary(m3)
+```
+
+# Model Evaluation
+## 1. Confusion Matrix
+
+```{r}
+# Model1
+predict_1 <- predict(m12, newdata=testing, type='response')
+glm.pred1 = ifelse(predict_1 > 0.5, 1, 0)
+cM1 <- confusionMatrix(glm.pred1, testing$target, positive = "1")
+
+# Model2
+predict_2 <- predict(m2, newdata=testing, type='response')
+glm.pred2 = ifelse(predict_2 > 0.5, 1, 0)
+cM2 <- confusionMatrix(glm.pred2, testing$target, positive = "1")
+
+# Model3
+predict_3 <- predict(m3,newdata=testing_pca,type='response')
+glm.pred3 = ifelse(predict_3 > 0.5, 1, 0)
+cM3 <- confusionMatrix(glm.pred3, testing_pca$target, positive = "1")
+
+# Put results together
+df1b <- as.data.frame(cM1$byClass)
+df1a <- as.data.frame(cM1$overall)
+colnames(df1a) <- 'Model1'
+colnames(df1b) <- 'Model1'
+df1 <- rbind(df1a, df1b)
+
+df2b <- as.data.frame(cM2$byClass)
+df2a <- as.data.frame(cM2$overall)
+colnames(df2a) <- 'Model2'
+colnames(df2b) <- 'Model2'
+df2 <- rbind(df2a, df2b)
+
+df3b <- as.data.frame(cM3$byClass)
+df3a <- as.data.frame(cM3$overall)
+colnames(df3a) <- 'Model3'
+colnames(df3b) <- 'Model3'
+df3 <- rbind(df3a, df3b)
+
+df <- cbind(df1,df2,df3)
+kable(df,caption='Confusion Matrix')
+```
+
+## 2. ROC Curve and Area under the Curve
+
+```{r,message=FALSE, warning=FALSE}
+rc1 <- roc(factor(target) ~ predict_1, data=testing)
+rc2 <- roc(factor(target) ~ predict_2, data=testing)
+rc3 <- roc(factor(target) ~ predict_3, data=testing_pca)
+
+plot(rc1,main='Model 1 - ROC Curve')
+plot(rc2,main='Model 2 - ROC Curve')
+plot(rc3,main='Model 3 - ROC Curve')
+
+model <- c('Model 1', 'Model 2', 'Model 3')
+area <- c(auc(rc1),auc(rc2),auc(rc3))
+df <- data.frame(Model=model,AUC=area)
+kable(df,caption='Area under the curve')
+```
+
+## 3.Log-likelihood/AIC/BIC
+
+```{r}
+LL.1 <- logLik(m1)
+LL.2 <- logLik(m2)
+LL.3 <- logLik(m3)
+LL <- rbind(LL.1, LL.2, LL.3) %>% round(2)
+```
+
+Akaike's 'An Information Criterion'
+```{r}
+AIC.1 <- AIC(m1)
+AIC.2 <- AIC(m2)
+AIC.3 <- AIC(m3)
+AIC <- rbind(AIC.1, AIC.2, AIC.3) %>% round(2)
+```
+
+Coefficient of Determination
+```{r}
+# http://stats.stackexchange.com/questions/577/is-there-any-reason-to-prefer-the-aic-or-bic-over-the-other
+BIC.1 <- BIC(m1)
+BIC.2 <- BIC(m2)
+BIC.3 <- BIC(m3)
+BIC <- rbind(BIC.1, BIC.2, BIC.3) %>% round(2)
+```
+
+```{r}
+eval.table <- cbind(LL, AIC, BIC)
+
+rownames(eval.table) <- c("Model 1", "Model 2", "Model 3")
+colnames(eval.table) <- c("Log Likelihood", "AIC", "BIC")
+
+kable(eval.table,caption = 'Log-likelihood/AIC/BIC')
+```
+

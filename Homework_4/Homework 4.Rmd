@@ -1,0 +1,91 @@
+---
+title: "Homework 4"
+author: "Dan Brooks"
+date: "July 6, 2016"
+output: pdf_document
+---
+
+```{r}
+library(stringr)
+library(PerformanceAnalytics)
+library(aod)
+library(ggplot2)
+library(Rcpp)
+library(Amelia)
+library(class)
+```
+
+```{r}
+data <- read.csv("https://raw.githubusercontent.com/jhamski/DATA621-Homework/master/Homework_4/insurance_training_data.csv?token=AOktEJfZoCX4Li2rFufBhwaCXfOtJt6pks5XhkMBwA%3D%3D", na.strings = c("", "NA"), stringsAsFactors = FALSE)
+```
+
+```{r}
+missmap(data, main = "Missing values vs observed")
+
+sapply(data, sd)
+
+xtabs(~ TARGET_FLAG + SEX, data = data)
+xtabs(~ TARGET_FLAG + CAR_TYPE, data = data)
+xtabs(~ TARGET_FLAG + CAR_USE, data = data)
+xtabs(~ TARGET_FLAG + EDUCATION, data = data)
+xtabs(~ TARGET_FLAG + JOB, data = data)
+xtabs(~ TARGET_FLAG + MSTATUS, data = data)
+xtabs(~ TARGET_FLAG + PARENT1, data = data)
+xtabs(~ TARGET_FLAG + RED_CAR, data = data)
+xtabs(~ TARGET_FLAG + REVOKED, data = data)
+xtabs(~ TARGET_FLAG + SEX, data = data)
+xtabs(~ TARGET_FLAG + URBANICITY, data = data)
+```
+
+```{r}
+normalize <- function(x)
+{
+  return((x-min(x))/(max(x)-min(x)))
+}
+```
+
+```{r}
+blue_book <- unname(sapply(data$BLUEBOOK, str_replace_all, '[,$]', ''))
+blue_book <- as.numeric(blue_book)
+
+income <- unname(sapply(data$INCOME, str_replace_all, '[,$]', ''))
+income <- as.numeric(income)
+
+home_val <- unname(sapply(data$HOME_VAL, str_replace_all, '[,$]', ''))
+home_val <- as.numeric(home_val)
+
+old_claim <- unname(sapply(data$OLDCLAIM, str_replace_all, '[,$]', ''))
+old_claim <- as.numeric(old_claim)
+
+data$BLUEBOOK <- blue_book
+data$INCOME <- income
+data$HOME_VAL <- home_val
+data$OLDCLAIM <- old_claim
+
+data$CAR_TYPE <- factor(data$CAR_TYPE)
+data$CAR_USE <- factor(data$CAR_USE)
+data$EDUCATION <- factor(data$EDUCATION)
+data$JOB <- factor(data$JOB)
+data$MSTATUS <- factor(data$MSTATUS)
+data$PARENT1 <- factor(data$PARENT1)
+data$RED_CAR <- factor(data$RED_CAR)
+data$REVOKED <- factor(data$REVOKED)
+data$SEX <- factor(data$SEX)
+data$URBANICITY <- factor(data$URBANICITY)
+
+data2 <- data[complete.cases(data),]
+
+numeric_data <- data2[,-c(1,9,11,12,13,14,16,19,20,23,26)]
+normalize_data <- as.data.frame(lapply(numeric_data, normalize))
+data3 <- cbind(normalize_data, data2[,c(9,11,12,13,14,16,19,20,23,26)])
+```
+
+```{r}
+#Linear Regression Models
+
+#Model 1
+
+```
+
+
+

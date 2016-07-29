@@ -1,0 +1,123 @@
+---
+title: "HW5_YQ"
+author: "Youqing Xiang"
+date: "July 16, 2016"
+output: pdf_document
+---
+
+# Data Exploration
+
+```{r,echo=FALSE, warning=FALSE, message=FALSE}
+library(ggplot2)
+library(MASS)
+library(knitr)
+library(gridExtra)
+library(grid)
+library(dplyr)
+library(Amelia)
+
+wine <- read.csv("wine-training-data.csv")
+wineN <- select(wine,-c(INDEX))
+df <- data.frame(Variable = colnames(wineN), NAs =
+                        c(0,0,0,0,616,638,647,682,0,395,1210,653,0,0,3359))
+df$Percent_NAs <- round(df$NAs/dim(wineN)[1],3)
+kable(df)
+```
+
+This dataset includes 12795 observations with 15 variables (`Index` columns excluded) in total. As the table shows above, there are a fair number of NAs and `STARS` variable has the most NAs.
+
+```{r,echo=FALSE, warning=FALSE, message=FALSE}
+missmap(wine)
+```
+
+The above matrix of the NAs doesn't show any pattern. So, we could consider to replace the NA values with certain method to avoid potentially losing a lardge amount to data if we just simply drop off the NA values during data preparation process.
+
+Since `STARS` variable has the most NAs, which accounts for 26.3% of data points, it is worthwhile to check how `STARS` variable NAs affect other variables, especially the `TARGET` variable. Here I created a new varialbe: `STARS_Present`, which is a categorical variable, equals to 0 when `STARS` value is missing and 1 when `STARS` value is present. And then I show density plots for each variable grouped by `STARS_Present`.
+
+```{r,echo=FALSE, warning=FALSE, message=FALSE}
+wine$STARS_Present <- factor(ifelse(is.na(wine$STARS),0,1))
+
+Target_df <- select(wine,c(TARGET,STARS_Present))
+Target_p1 <- ggplot(Target_df, aes(x=TARGET)) + geom_density(aes(colour=STARS_Present)) +
+  theme(legend.position=c(0.6,0.8))
+
+FixedAcidity_df <- select(wine,c(FixedAcidity,STARS_Present))
+FixedAcidity_p1 <- ggplot(FixedAcidity_df, aes(x=FixedAcidity)) + 
+  geom_density(aes(colour=STARS_Present)) +
+  theme(legend.position=c(0.75,0.8))
+
+VolatileAcidity_df <- select(wine,c(VolatileAcidity,STARS_Present))
+VolatileAcidity_p1 <- ggplot(VolatileAcidity_df, aes(x=VolatileAcidity)) + 
+  geom_density(aes(colour=STARS_Present)) +
+  theme(legend.position=c(0.75,0.8))
+
+CitricAcid_df <- select(wine,c(CitricAcid,STARS_Present))
+CitricAcid_p1 <- ggplot(CitricAcid_df, aes(x=CitricAcid)) + 
+  geom_density(aes(colour=STARS_Present)) +
+  theme(legend.position=c(0.75,0.8))
+
+ResidualSugar_df <- select(wine,c(ResidualSugar,STARS_Present))
+ResidualSugar_p1 <- ggplot(ResidualSugar_df, aes(x=ResidualSugar)) + 
+  geom_density(aes(colour=STARS_Present)) +
+  theme(legend.position=c(0.75,0.8))
+
+Chlorides_df <- select(wine,c(Chlorides,STARS_Present))
+Chlorides_p1 <- ggplot(Chlorides_df, aes(x=Chlorides)) + 
+  geom_density(aes(colour=STARS_Present)) +
+  theme(legend.position=c(0.75,0.8))
+
+FreeSulfurDioxide_df <- select(wine,c(FreeSulfurDioxide,STARS_Present))
+FreeSulfurDioxide_p1 <- ggplot(FreeSulfurDioxide_df, aes(x=FreeSulfurDioxide)) + 
+  geom_density(aes(colour=STARS_Present)) +
+  theme(legend.position=c(0.75,0.8))
+
+TotalSulfurDioxide_df <- select(wine,c(TotalSulfurDioxide,STARS_Present))
+TotalSulfurDioxide_p1 <- ggplot(TotalSulfurDioxide_df, aes(x=TotalSulfurDioxide)) + 
+  geom_density(aes(colour=STARS_Present)) +
+  theme(legend.position=c(0.75,0.8))
+
+Density_df <- select(wine,c(Density,STARS_Present))
+Density_p1 <- ggplot(Density_df, aes(x=Density)) + 
+  geom_density(aes(colour=STARS_Present)) +
+  theme(legend.position=c(0.75,0.8))
+
+pH_df <- select(wine,c(pH,STARS_Present))
+pH_p1 <- ggplot(pH_df, aes(x=pH)) + 
+  geom_density(aes(colour=STARS_Present)) +
+  theme(legend.position=c(0.75,0.8))
+
+Sulphates_df <- select(wine,c(Sulphates,STARS_Present))
+Sulphates_p1 <- ggplot(Sulphates_df, aes(x=Sulphates)) + 
+  geom_density(aes(colour=STARS_Present)) +
+  theme(legend.position=c(0.75,0.8))
+
+Alcohol_df <- select(wine,c(Alcohol,STARS_Present))
+Alcohol_p1 <- ggplot(Alcohol_df, aes(x=Alcohol)) + 
+  geom_density(aes(colour=STARS_Present)) +
+  theme(legend.position=c(0.75,0.8))
+
+LabelAppeal_df <- select(wine,c(LabelAppeal,STARS_Present))
+LabelAppeal_p1 <- ggplot(LabelAppeal_df, aes(x=LabelAppeal)) + 
+  geom_density(aes(colour=STARS_Present)) +
+  theme(legend.position=c(0.75,0.8))
+
+AcidIndex_df <- select(wine,c(AcidIndex,STARS_Present))
+AcidIndex_p1 <- ggplot(AcidIndex_df, aes(x=AcidIndex)) + 
+  geom_density(aes(colour=STARS_Present)) +
+  theme(legend.position=c(0.75,0.8))
+
+AcidIndex_df <- select(wine,c(AcidIndex,STARS_Present))
+AcidIndex_p1 <- ggplot(AcidIndex_df, aes(x=AcidIndex)) + 
+  geom_density(aes(colour=STARS_Present)) +
+  theme(legend.position=c(0.75,0.8))
+
+grid.arrange(FixedAcidity_p1,VolatileAcidity_p1,ncol=2,nrow=1)
+grid.arrange(CitricAcid_p1,ResidualSugar_p1,ncol=2,nrow=1)
+grid.arrange(Chlorides_p1,FreeSulfurDioxide_p1,ncol=2,nrow=1)
+grid.arrange(TotalSulfurDioxide_p1,Density_p1,ncol=2,nrow=1)
+grid.arrange(pH_p1,Sulphates_p1,ncol=2,nrow=1)
+grid.arrange(Alcohol_p1,LabelAppeal_p1,ncol=2,nrow=1)
+grid.arrange(AcidIndex_p1,Target_p1,ncol=2,nrow=1)
+```
+
+From the above density plots, we can see that `STARS` variable NAs have big effect on `TARGET` distribution but no obvious effects on other variables. And we can also conclude that **STARS variable NAs** is actually predictive of the target. Overall, this part of analysis suggests us that we should treat **STARS variable NAs** as category variable. 

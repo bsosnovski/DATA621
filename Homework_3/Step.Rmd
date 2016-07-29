@@ -1,0 +1,78 @@
+---
+title: "HW3 Step"
+author: "Dan Fanelli"
+date: "July 2, 2016"
+output: html_document
+---
+
+### What we handed in: Normalized Backward Selection
+
+model3a <- glm(target ~ nox + age + rad + tax + ptratio + black + medv, data = training_norm, family = binomial)
+
+### What we handed in: Normalized Forward Selection
+
+model3b <- glm(target ~ nox + rad + tax + ptratio + black + medv + age + dis + zn + lstat, data = data3b, family = binomial)
+
+# Functions to do step and stepAIC:
+
+```{r}
+library(MASS)
+data.all <- read.csv('crime-training-data.csv')
+
+do_step_aic <- function(the_direction){
+  fit <- lm(target ~ ., data=data.all)
+  summary(stepAIC(fit, direction=the_direction, trace = FALSE))
+}
+
+do_step_by_step <- function(the_direction){
+  fit <- lm(target ~ ., data=data.all)
+  fit <- step(fit, direction=the_direction, trace = 0)
+  summary(fit)
+}
+```
+
+### All 6 Combos yield: (nox, age, rad, medv)
+
+# Forwards Comparison
+
+### Forward: stepAIC() 
+
+```{r}
+do_step_aic("forward")
+```
+
+### Forward: step()
+
+```{r}
+do_step_by_step("forward")
+```
+
+# Backward Comparison
+
+### Backward: stepAIC() 
+
+```{r}
+do_step_aic("backward")
+```
+
+### Backward: step()
+
+```{r}
+do_step_by_step("backward")
+```
+
+# Both Comparison
+
+### Both: stepAIC() 
+
+```{r}
+do_step_aic("both")
+```
+
+### Both: step()
+
+```{r}
+do_step_by_step("both")
+```
+
+

@@ -1,0 +1,543 @@
+---
+title: "Using Losistic Regression to Predict Boston Neighborhood Crime Levels"
+author: Daniel Brooks (daniel.brooks@spsmail.cuny.edu), Daniel Fanelli (daniel.fanelli@spsmail.cuny.edu),
+  Christopher Fenton (christopher.fenton@spsmail.cuny.edu), James Hamski (james.hamski@spsmail.cuny.edu),
+  Youqing Xiang (youqing.xiang@spsmail.cuny.edu)
+date: "7/3/2016"
+output:
+  pdf_document:
+    fig_caption: no
+    keep_tex: yes
+    number_sections: yes
+  html_document:
+    fig_caption: no
+    force_captions: yes
+    highlight: pygments
+    number_sections: yes
+    theme: cerulean
+csl: report_formatting.csl
+---
+
+The purpose of this analysis is to build a logistic regression model that will predict whether a particular neighborhood in Boston is above or below the median crime level for the city.
+
+Our dataset includes information on 466 Boston neighborhoods. Each neighborhood has 13 potential predictor variables, and 1 response variable. The response variable is "target", which is "1" if the neighbhorhood is above the city's median crime level, and 0 if not.
+
+# Data Exploration
+
+```{r message=FALSE, echo=FALSE, warning=FALSE}
+library(PerformanceAnalytics)
+library(ggplot2)
+library(gridExtra)
+library(knitr)
+library(caret)
+library(lattice)
+library(caret)
+library(dplyr)
+library(knitr)
+library(pROC)
+library(caTools)
+library(car)
+crime <- read.csv('crime-training-data.csv', na.strings=c("","NA"))
+data <- crime
+```
+
+
+The first thing we checked for was if there was missing data in any of the variables. There was no missing data.
+
+Of the 13 predictor variables, 12 were numeric and 1 was caterogical. The categorical data would need to be converted in order to be approrpriately used in a generalized linear model.
+
+We also examined the distribution of the response variable, `target`. 229 neighborhoods were marked with a 1, thus above the median crime level, and 237 were not. The fact that the two numbers were not within 1 of each other implies that some neighbohood data was not included. However, the split was roughly even, allowing us to proceed.
+
+**Figure 1.1**  
+```{r warning=FALSE, echo=FALSE, message=FALSE, eval=TRUE}
+summary(crime)
+# Histogram of one variable
+zn_hist <- ggplot(crime, aes(zn)) + geom_histogram()
+indus_hist <- ggplot(crime, aes(indus)) + geom_histogram()
+nox_hist <- ggplot(crime, aes(nox)) + geom_histogram()
+rm_hist <- ggplot(crime, aes(rm)) + geom_histogram()
+age_hist <- ggplot(crime, aes(age)) + geom_histogram()
+dis_hist <- ggplot(crime, aes(dis)) + geom_histogram()
+rad_hist <- ggplot(crime, aes(rad)) + geom_histogram()
+tax_hist <- ggplot(crime, aes(tax)) + geom_histogram()
+ptratio_hist <- ggplot(crime, aes(ptratio)) + geom_histogram()
+black_hist <- ggplot(crime, aes(black)) + geom_histogram()
+lstat_hist <- ggplot(crime, aes(lstat)) + geom_histogram()
+medv_hist <- ggplot(crime, aes(medv)) + geom_histogram()
+
+# Boxplot: one variable ~ target
+zn_bp <- ggplot(crime, aes(factor(target), zn)) + geom_boxplot()
+indus_bp <- ggplot(crime, aes(factor(target), indus)) + geom_boxplot()
+nox_bp <- ggplot(crime, aes(factor(target), nox)) + geom_boxplot()
+rm_bp<- ggplot(crime, aes(factor(target), rm)) + geom_boxplot()
+age_bp <- ggplot(crime, aes(factor(target), age)) + geom_boxplot()
+dis_bp <- ggplot(crime, aes(factor(target), dis)) + geom_boxplot()
+rad_bp <- ggplot(crime, aes(factor(target), rad)) + geom_boxplot()
+tax_bp <- ggplot(crime, aes(factor(target), tax)) + geom_boxplot()
+ptratio_bp <- ggplot(crime, aes(factor(target), ptratio)) + geom_boxplot()
+black_bp <- ggplot(crime, aes(factor(target), black)) + geom_boxplot()
+lstat_bp <- ggplot(crime, aes(factor(target), lstat)) + geom_boxplot()
+medv_bp <- ggplot(crime, aes(factor(target), medv)) + geom_boxplot()
+
+# Histogram and boxplot showing together
+grid.arrange(zn_hist,zn_bp,indus_hist,indus_bp,nox_hist,nox_bp,ncol=2,nrow=3)
+grid.arrange(rm_hist,rm_bp,age_hist,age_bp,dis_hist,dis_bp,ncol=2,nrow=3)
+grid.arrange(rad_hist,rad_bp,tax_hist,tax_bp,ptratio_hist,ptratio_bp,ncol=2,nrow=3)
+grid.arrange(black_hist,black_bp,lstat_hist,lstat_bp,medv_hist,medv_bp,ncol=2,nrow=3)
+```
+
+
+Using histograms of variables and boxplots of variables grouped by predictor (Figure 1.1), we could see some outliers that may need to be dealt with. Also, correlations with the response variable (`target`) showed that variables such as `zn`, `indus`, `dis` and `rad` may have more potential as predictor variables while `chas` and `rm` may not be as useful.
+
+```{r echo=FALSE, eval=FALSE}
+table(crime$target)
+```
+
+\pagebreak  
+
+**Figure 1.2**  
+```{r warning=FALSE, echo=FALSE}
+chart.Correlation(crime)
+```  
+
+Figure 1.2 shows that every variable other than adjancency to the Charles river has correlation significance level of .001 with our response variable, `target`. This graph also shows that multicollinearity is something that will have to be dealt with in this model. Principal component analysis could be useful to mitigate this.
+
+The fact that the predictor variables show a high degree of correlation with each other makes intuitive sense. Most variables relate to a notion of "desirability", which would hypothetically have significant impacts on other variables. 
+
+For instance, one might suppose that a high degree of industrial real estate in a neighborhood would have a negative effect on real estate values. One might than hypothesize that a neighborhood with lower median real estate values would be more highly susceptible to higher than usual crime.
+
+At least in the provided dataset, there are strong correlations that bear out both of those hypotheses. `Indus`, which describes the proportion of non-retail businesses in a neighborhood, is negatively correlated by a factor of -.49617 with `Medv`, the median value of owner occupied homes; `Medv` is negative correlated (-.27) with higher than normal crime rates. 
+
+# Data Preparation
+
+We used two separate approaches to preparing the data. One approach dealt with each variable separately, while the second approach normalized all variables.
+
+## Individual Variable Preparation Approach
+
+This approach looked at each variable independently of the others.
+
+### zn
+
+**Figure 2.1**  
+```{r echo=FALSE}
+ggplot(crime, aes(x=zn)) + geom_density(aes(colour=factor(target))) + xlim(0,100) +
+  geom_vline(xintercept = 3)
+crime$znN <- ifelse(crime$zn > 3, 1, 0)
+crime$znN <- as.factor(crime$znN)
+t <- as.data.frame(table(znN=crime$znN, Target=crime$target))
+kable(t, align='c')
+```  
+
+
+Using Figure 2.1, we decided to transform the numeric `z` variable to a derived categorical variable called `znN`. For this new `znN` variable, *1* means more than 3% of residential land zoned for large lots (over 25000 square feet), and *0* means less than or equal to 3% of residential land zoned for large lots (over 25000 square feet).
+
+### indus
+
+Each observation in the dataset is for a different Boston area neighborhood. This means the data are somewhat arbitrarily binned by geography - the area that is considered a neighborhood is influenced by historical factors. For instance, we see high-value outliers in the `indus` variable because historic land-use and zoning laws mean that non-retail business use is concentrated in specific industrial areas. In order to remove these potential leverage points, we removed neighborhoods with indus values above 20. However, we do not consider this to be invalid data. 
+
+\pagebreak  
+
+**Figure 2.3**
+
+```{r echo = FALSE}
+attach(crime)
+p0 <- ggplot(crime, aes(factor(target), indus)) + geom_boxplot()
+crime <- crime[-which(target==0 & indus > 20),]
+p1 <- ggplot(crime, aes(factor(target), indus)) + geom_boxplot()
+grid.arrange(p0, p1,ncol=2,nrow=1)
+detach(crime)
+```
+
+For `indus`, we removed observations where `indus` was greater than 20 and `target` was 0.
+
+### dis
+
+**Figure 2.4**  
+```{r echo=FALSE}
+attach(crime)
+p0 <- ggplot(crime, aes(factor(target), dis)) + geom_boxplot()
+crime <- crime[-which(target==0 & dis > 11),]
+crime <- crime[-which(target==1 & dis > 7.5),]
+p1 <- ggplot(crime, aes(factor(target), dis)) + geom_boxplot()
+grid.arrange(p0, p1, ncol=2,nrow=1)
+detach(crime)
+```
+
+We removed observations where `dis` was greater than 11 and `target` was 0, and observations where `dis` was greater than 7.5 and `target` was 1.
+
+### 7. rad
+
+```{r echo=FALSE}
+ggplot(crime, aes(x=rad)) + geom_density(aes(colour=factor(target))) + xlim(0,100) + geom_vline(xintercept = 7)
+crime$radN <- ifelse(crime$rad > 7, 1, 0)
+crime$radN <- as.factor(crime$radN)
+t <- as.data.frame(table(radN=crime$radN, Target=crime$target))
+kable(t)
+```
+
+Here we applied the same method as `zn`. We set up a new variable called `radN`, where *1* means index of accessibility to radial highways was greater than 7 and *0* means index of accessibility to radial highways was less than or equal to 7.  
+
+### Summary
+
+Under our first approach, we removed 14 rows and added 2 new variables: `znN` and `radN`.
+
+## Normalization Approach
+Since the variables were on a variety of scales, we created a dataset of centered (predictor variable mean subtracted from each observation) and scaled (each observation divided by the predictor variable's standard deviation) data. The two datasets are distinguished as 'non-normalized' and 'normalized' below, with the latter having been centered and scaled using R's 'scale' function.  
+
+```{r echo=FALSE}
+
+#Since the variables were on a variety of scales, we also tried models that normalized the data before fitting. The following formula was used to normalize each variable of each observation.  
+#$\frac{(x_{i} - x_{min})}{(x_{max} - x_{min}) \times 100}$
+
+normalize <- function(x)
+{
+ return((x - min(x)) / (max(x) - min(x)) * 100)
+}
+
+target <- data$target
+#data_n <- as.data.frame(lapply(data[1:13], normalize))
+#normalized_data <- cbind(data_n, target)
+
+data_n <- data %>%
+  select(-target) %>%
+  scale(center = TRUE, scale = TRUE)
+
+normalized_data <- data_n %>%
+  cbind(target) %>%
+  as.data.frame()
+```
+
+
+
+# Build Models
+
+Since the evaluation data set did not include the response variable, we were not able to use it to cross validate our models. Instead, we split the training data on a 70-30 training/testing split to evaluate our models.
+
+```{r echo=FALSE}
+set.seed(45)
+inTrain <- createDataPartition(y=crime$target, p=0.7,list=FALSE)
+training <- crime[inTrain,]
+testing <- crime[-inTrain,]
+
+inTrain2 <- createDataPartition(y=normalized_data$target, p=0.7,list=FALSE)
+training_norm <- normalized_data[inTrain2,]
+testing_norm <- normalized_data[-inTrain2,]
+```
+
+## Model 1: Non-normalized Baseline  
+
+This model used the non-normalized original variables. It utilized the probit for the link function. The model began with all the original values, and via backwards selection removed the `zn`, `chas`, `rm`, `dis`, and `black` variables.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+m11 <- glm(target ~ . -znN-radN, data=training, family = binomial(link='probit'))
+#summary(m11)
+m12 <- update(m11, .~. - zn-chas-rm-dis-black)
+m1 <- m12
+summary(m1)
+```
+
+From the output, the model is as follows:
+
+the log odds of `target` = -24.17 + 0.135 `indus` + 28.874 `nox` + 0.015 `age` + 0.492 `rad` - 0.017 `tax` + 0.344 `ptratio` + 0.1 `lstat` + 0.079 `medv`
+
+We can see that `indus`, `nox`, `age`, `rad`, `ptratio`, `lstat`, and `medv` have positive effects on `target`, but `tax` has a negative effect on `target`.
+
+For this model, the most unexpected result is that `medv` (median value of owner-occupied homes in $1000s) has a positive effect on crime. And if we go back to check figure 1.2, we saw the weak negative correlationship (-0.27) between `medv` and `target`. Since this model includes `indus`, `nox`, `age`, `rad`, `ptratio`, `lstat`, `medv` and `tax`, **multicollinearity** could be the root cause.
+
+## Model 2: Non-normalized with derived variables  
+
+This model also used backward selection on the non-normalized variables and the probit for the link function, but instead used the derived variables from part 2, instead of their original counterparts.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+## Model2 - Using the three new created variances
+
+m21 <- glm(target ~ .-age-zn-rad, data=training, 
+               family = binomial(link='probit'))
+#summary(m21)
+m22 <- update(m21, .~. - indus-chas-rm-dis-black-znN)
+#summary(m22)
+m23 <- update(m22, .~. -medv)
+#summary(m23)
+m24 <- update(m23, .~. -ptratio)
+m2 <- m24
+summary(m2)
+```
+
+From the output, the model is as follows:
+
+the log odds of `target` = -16.71 + 32.43 `nox` - 0.006 `tax` + 0.08 `lstat` + 2.93 radN1
+
+We can see that `nox` and `lstat` have positive effects on the log odds of `target`, but `tax` has a negative effect on the log odds of `target`. In addition, when radN equals to 1, the log odds of `target` increases by 2.93.
+
+This model only include 4 variables and we transformed `rad` to categorical variable `radN`, so **multicollinearity** became less of an issue to us. Although we saw a positve correlation between `tax` and `target` in figure 1.2, both Model 1 and Model 2 show that `tax` has a negative yet weak effect on the log odds of `target`, which fits our intuition.
+
+## Model 3: Principle Component Analysis
+
+For this model, we used an orthogonal transformation to convert our variables (normalization applied to all variables) into a set of values of linearly uncorrelated variables, which is called principal components. And then we chose the first two principal components that account for around 95% proportion of variance in the data. Finally, we used those chosen principal components to build a logistic regression model. 
+
+```{r echo=FALSE, warning=FALSE}
+crime_pca <- crime[,1:14]
+crime_pca <- select(crime_pca,-chas)
+#names(crime_pca)
+target <- crime_pca$target
+A <- as.matrix(select(crime_pca,-target))
+pca <- princomp(A,center=T,scale.=T)
+plot(pca)
+#summary(pca)
+pca <- as.data.frame(pca$scores[,1:2])
+crime_pca <- cbind(target=target,pca)
+```
+
+```{r echo=FALSE}
+head(crime_pca)
+set.seed(45)
+inTrain_pca <- createDataPartition(y=crime_pca$target, p=0.7,list=FALSE)
+training_pca <- crime_pca[inTrain_pca,]
+testing_pca <- crime_pca[-inTrain_pca,]
+m3 <- glm(target ~ ., data=training_pca)
+summary(m3)
+```
+
+From the output, the formula we got was the following:
+
+the log odds of `target` = 0.512 - 0.00182 `Comp.1` - 0.00017 `Comp.2`
+
+For this model, since we did an orthogonal transformation of variables, **multicollinearity** was no longer an issue. Both principal components have negative effects on the log odds of `target`. And we only chose two principal components, so we keep the model as is, even though the p value of `Comp.2` is not significant.
+
+## Model 4: Normalized Backward Selection
+
+This model used the normalized data, the logit in the link function, and used backward selection using R's step() function with the backward option to arive at the below model. Insignificant variables (those with a P value > .05) were discarded.
+
+```{r echo=FALSE, warning=FALSE}
+data3a <- training_norm[,-c(5,12)]
+
+model3a <- glm(target ~ nox + age + rad + tax + ptratio + black + medv, data = training_norm, family = binomial)
+predict3a <- round(predict(model3a, type = 'response'),4)
+
+result3a <- predict3a
+
+for (i in 1:NROW(predict3a))
+{ 
+ if(predict3a[i] > .50)
+  {
+   result3a[i] <- 1
+  } else
+  {
+   result3a[i]  <- 0
+  }
+}
+
+final3a <- as.data.frame(cbind(predict3a, result3a))
+t <- table(actual = data3a$target, predicted = final3a$result3a)
+summary(model3a)
+```
+
+The backward selection model is below:
+
+the log odds of `target` = 3.80 + 3.73 `nox` + 0.79 `age` + 6.23 `rad` - 1.91 `tax` 1.03 `ptratio` - 4.59 `black` + .87 `medv`  
+
+As in model 1, this model predicts a positive effect of 'medv' (median value of owner occupied homes) on `target` or crime, which is counterintuitive. This is an indication that multicollinearity could be an issue.
+
+The high number of predictors (7) in this model also has the effect of decreasing the interpretive ability of the model. 
+
+## Model 5: Normalized Forward Selection
+
+This model used the normalized data, the logit in the link function, and used forward selection using R's step() function with the forward option to arive at the below model.
+
+```{r echo=FALSE, warning=FALSE}
+data3b <- training_norm[,-c(2,3,5)]
+
+model3b <- glm(target ~ nox + rad + tax + ptratio + black + medv + age + dis + zn + lstat, data = data3b, family = binomial)
+predict3b <- round(predict(model3b, type = 'response'),4)
+
+result3b <- predict3b
+
+for (i in 1:NROW(predict3b))
+{ 
+ if(predict3b[i] > .50)
+  {
+   result3b[i] <- 1
+  } else
+  {
+   result3b[i]  <- 0
+  }
+}
+
+final3b <- as.data.frame(cbind(predict3b, result3b))
+
+summary(model3b)
+```
+
+The normalized forward selection model is below:
+
+the log odds of `target` = 3.50 + 4.40 `nox` + 6.46 `rad` - 1.79 `tax` + 0.98 `ptratio` - 4.27 `black` + 1.44 `medv` + 0.90 `age` + 1.01 `dis` - 1.65 `zn` + 0.33 `lstat`  
+
+Many of the concerns that appeared in Model 4 (normalized backward selection) reappear in Model 5. Medv again positvely predicts a higher crime level, indicating multicollinearity.
+
+This model also includes a large number of predictors (11), even larger than model 4. The inclusion of some insginificant variables was used to compare it's performance against a similar model that did not include insignificant variables (Model 4).
+
+
+
+# Model Selection
+
+During our modeling process, **multicollinearity** was the biggest issue we faced. Model 3 completely took care of this issue; Model 2 minimized this issue to a great extent and Models 1, 4 and 5 partially solved this problem. We used cross validation technique to further study our models and try to find the best model.
+
+## Confusion Matrices
+
+```{r echo=FALSE}
+# Model1
+predict_1 <- predict(m1, newdata=testing, type='response')
+glm.pred1 = ifelse(predict_1 > 0.5, 1, 0)
+cM1 <- confusionMatrix(glm.pred1, testing$target, positive = "1")
+
+# Model2
+predict_2 <- predict(m2, newdata=testing, type='response')
+glm.pred2 = ifelse(predict_2 > 0.5, 1, 0)
+cM2 <- confusionMatrix(glm.pred2, testing$target, positive = "1")
+
+# Model3
+predict_3 <- predict(m3,newdata=testing_pca,type='response')
+glm.pred3 = ifelse(predict_3 > 0.5, 1, 0)
+cM3 <- confusionMatrix(glm.pred3, testing_pca$target, positive = "1")
+
+# Model4
+predict_4 <- predict(model3a, newdata=testing_norm, type ='response')
+glm.pred4 = ifelse(predict_4 > 0.5, 1, 0)
+cM4 <- confusionMatrix(glm.pred4, testing_norm$target, positive = "1")
+
+# Model5
+predict_5 <- predict(model3b, newdata=testing_norm, type ='response')
+glm.pred5 = ifelse(predict_4 > 0.5, 1, 0)
+cM5 <- confusionMatrix(glm.pred5, testing_norm$target, positive = "1")
+```
+
+```{r echo=FALSE}
+df1b <- as.data.frame(cM1$byClass)
+df1a <- as.data.frame(cM1$overall)
+colnames(df1a) <- 'Model1'
+colnames(df1b) <- 'Model1'
+df1 <- rbind(df1a, df1b)
+
+df2b <- as.data.frame(cM2$byClass)
+df2a <- as.data.frame(cM2$overall)
+colnames(df2a) <- 'Model2'
+colnames(df2b) <- 'Model2'
+df2 <- rbind(df2a, df2b)
+
+df3b <- as.data.frame(cM3$byClass)
+df3a <- as.data.frame(cM3$overall)
+colnames(df3a) <- 'Model3'
+colnames(df3b) <- 'Model3'
+df3 <- rbind(df3a, df3b)
+
+df4b <- as.data.frame(cM4$byClass)
+df4a <- as.data.frame(cM4$overall)
+colnames(df4a) <- 'Model4'
+colnames(df4b) <- 'Model4'
+df4 <- rbind(df4a, df4b)
+
+df5b <- as.data.frame(cM5$byClass)
+df5a <- as.data.frame(cM5$overall)
+colnames(df5a) <- 'Model5'
+colnames(df5b) <- 'Model5'
+df5 <- rbind(df5a, df5b)
+
+df <- cbind(df1,df2,df3,df4,df5)
+kable(df,caption='Confusion Matrix')
+```
+
+## ROC Curve and Area Under the Curve
+
+```{r,message=FALSE, warning=FALSE, echo=FALSE}
+rc1 <- roc(factor(target) ~ predict_1, data=testing)
+rc2 <- roc(factor(target) ~ predict_2, data=testing)
+rc3 <- roc(factor(target) ~ predict_3, data=testing_pca)
+rc4 <- roc(factor(target) ~ predict_4, data=testing_norm)
+rc5 <- roc(factor(target) ~ predict_5, data=testing_norm)
+
+plot(rc1,main='Model 1 - ROC Curve')
+plot(rc2,main='Model 2 - ROC Curve')
+plot(rc3,main='Model 3 - ROC Curve')
+plot(rc4,main='Model 4 - ROC Curve')
+plot(rc5,main='Model 5 - ROC Curve')
+
+model <- c('Model 1', 'Model 2', 'Model 3','Model 4','Model 5')
+area <- c(auc(rc1),auc(rc2),auc(rc3),auc(rc4),auc(rc5))
+df <- data.frame(Model=model,AUC=area)
+kable(df,caption='Area under the curve')
+```
+
+4 of the 5 area under the curve measurements were above .96, indicating that all but model 3 have excellent predictive power when measured against the test set.
+
+\pagebreak
+
+## Log-likelihood/AIC/BIC
+
+```{r echo = FALSE}
+LL.1 <- logLik(m1)
+LL.2 <- logLik(m2)
+LL.3 <- logLik(m3)
+LL.4 <- logLik(model3a)
+LL.5 <- logLik(model3b)
+LL <- rbind(LL.1, LL.2, LL.3, LL.4, LL.5) %>% round(2)
+```
+
+
+```{r echo = FALSE}
+#Akaike Information Criterion
+AIC.1 <- AIC(m1)
+AIC.2 <- AIC(m2)
+AIC.3 <- AIC(m3)
+AIC.4 <- AIC(model3a)
+AIC.5 <- AIC(model3b)
+AIC <- rbind(AIC.1, AIC.2, AIC.3, AIC.4, AIC.5) %>% round(2)
+```
+
+
+```{r echo = FALSE}
+#Coefficient of Determination
+# http://stats.stackexchange.com/questions/577/is-there-any-reason-to-prefer-the-aic-or-bic-over-the-other
+BIC.1 <- BIC(m1)
+BIC.2 <- BIC(m2)
+BIC.3 <- BIC(m3)
+BIC.4 <- BIC(model3a)
+BIC.5 <- BIC(model3b)
+BIC <- rbind(BIC.1, BIC.2, BIC.3, BIC.4, BIC.5) %>% round(2)
+```
+
+```{r echo = FALSE}
+eval.table <- cbind(LL, AIC, BIC)
+
+rownames(eval.table) <- c("Model 1", "Model 2", "Model 3", "Model 4", "Model 5")
+colnames(eval.table) <- c("Log Likelihood", "AIC", "BIC")
+
+kable(eval.table,caption = 'Log-likelihood/AIC/BIC')
+```
+
+
+Overall, Model 2 stands out with high Accuracy, high Sensitivity, high Specificity, high AUC, high Log-likelihood number, low AIC and low BIC. Although Model 3 was the best model to deal with **multicollinearity** issues, we still wanted a model with good prediction. 
+
+Model 2 not only greatly minimized the **multicollinearity** issue, but also gave the better prediction. We can verify the low level of multicollinearity in Model 2 by looking at variance inflation factors (using the 'car' library's vif() function. VIF measures how much the variance of each variable is inflated due to multicollinearity.
+
+```{r echo=FALSE}
+vif(m2)
+```  
+
+Since the scores are all below 4, we can conclude multicollinearity has been handled appropriately.
+
+More importantly, Likelihood, AIC and BIC numbers also indicate Model 2 is a better model to fit.
+
+# Predictions on Evaluation Data
+
+```{r,echo=FALSE}
+eval <- read.csv('crime-evaluation-data.csv')
+eval$radN <- ifelse(eval$rad > 7, 1, 0)
+eval$radN <- as.factor(eval$radN)
+predict_eval <- predict(m2, newdata=eval, type='response')
+glm.pred_eval = ifelse(predict_eval > 0.5, 1, 0)
+eval$target <- glm.pred_eval
+table(eval$target)
+write.csv(eval, 'result.csv')
+```
+
+After we applied our chosen model (Model 2) to crime-evaluation-data set, we predicted that for 16 observations `target` equals 0, and 24 observations, which `target` equals 1. Please check the file *result.csv* for detailed information.

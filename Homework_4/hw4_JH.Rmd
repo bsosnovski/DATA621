@@ -1,0 +1,216 @@
+---
+title: "hw4_JH"
+author: Daniel Brooks (daniel.brooks@spsmail.cuny.edu), Daniel Fanelli (daniel.fanelli@spsmail.cuny.edu),
+  Christopher Fenton (christopher.fenton@spsmail.cuny.edu), James Hamski (james.hamski@spsmail.cuny.edu),
+  Youqing Xiang (youqing.xiang@spsmail.cuny.edu)
+date: "July 8, 2016"
+output: pdf_document
+---
+
+***I used Chris's data prep code ***
+
+Libraries:
+```{r, message=FALSE, error=FALSE, warning=FALSE}
+library(stringr)
+#library(PerformanceAnalytics)
+#library(aod)
+library(ggplot2)
+#library(Rcpp)
+#library(Amelia)
+
+#Note packages
+library(dplyr)
+library(rpart)
+library(caret)
+library(ROCR)
+```
+
+Loading the data:
+
+```{r}
+ins <- read.csv('insurance_training_data.csv',na.strings=c("","NA"),stringsAsFactors = FALSE)
+```
+
+# Data Exploration
+
+```{r, echo=FALSE}
+#check for missing values
+sapply(ins, function(x) sum(is.na(x)))
+
+```
+There are 2116 incomplete observations (missing at least one variable value), these will need to either be imputed or dropped.
+
+# Data Transformation
+
+
+Converting the money character fields to numeric.
+```{r, echo=FALSE}
+blue_book <- unname(sapply(ins$BLUEBOOK, str_replace_all, '[,$]', ''))
+blue_book <- as.numeric(blue_book)
+
+income <- unname(sapply(ins$INCOME, str_replace_all, '[,$]', ''))
+income <- as.numeric(income)
+
+home_val <- unname(sapply(ins$HOME_VAL, str_replace_all, '[,$]', ''))
+home_val <- as.numeric(home_val)
+
+old_claim <- unname(sapply(ins$OLDCLAIM, str_replace_all, '[,$]', ''))
+old_claim <- as.numeric(old_claim)
+
+ins$BLUEBOOK <- blue_book
+ins$INCOME <- income
+ins$HOME_VAL <- home_val
+ins$OLDCLAIM <- old_claim
+```
+
+Converting the categoricals to factors:
+```{r, echo=FALSE}
+ins$CAR_TYPE <- factor(ins$CAR_TYPE)
+ins$CAR_USE <- factor(ins$CAR_USE)
+ins$EDUCATION <- factor(ins$EDUCATION)
+ins$JOB <- factor(ins$JOB)
+ins$MSTATUS <- factor(ins$MSTATUS)
+ins$PARENT1 <- factor(ins$PARENT1)
+ins$RED_CAR <- factor(ins$RED_CAR)
+ins$REVOKED <- factor(ins$REVOKED)
+ins$SEX <- factor(ins$SEX)
+ins$URBANICITY <- factor(ins$URBANICITY)
+
+#Adding response variables
+
+ins$TARGET_FLAG <- factor(ins$TARGET_FLAG, levels = 0:1, labels = c("No", "Yes"))
+```
+
+
+```{r, echo=FALSE, eval=FALSE}
+#TARGET_FLAG TARGET_AMT + KIDSDRIV + AGE + HOMEKIDS + YOJ + INCOME + PARENT1 + HOME_VAL + MSTATUS + SEX + EDUCATION + JOB + TRAVTIME + CAR_USE + BLUEBOOK + TIF + CAR_TYPE + RED_CAR + OLDCLAIM + CLM_FREQ + REVOKED + MVR_PTS + CAR_AGE + URBANICITY
+```
+
+
+
+# Models
+
+## Tree-based Models
+
+Classification / regression trees are a intuitive way of analyzing the insurance dataset. You can imagine an insurance agent reading of a list of questions pertaining to variables from the dataset (what is the age of the driver? how many points are on the driver's license?) and using the responses to assess the risk, and therefore cost, of the policy. Unlike more 'black box' methods like principle components analysis, a non-technical end user can typically easily understand the output of a tree model.
+
+A tree model performs three steps:
+
+1) Partition each predictor
+2) Take the mean of the response in each predictor and compute:
+$$RSS(partition)=RSS(part_1)+RSS(part_2)$$
+Then, choose the partition that minimizes the residual sum of squares (RSS)
+3) Subpartition the partitions in a recursive manner. 
+
+The split is made at each step based on the independent variable that results in the largest possible reduction in heterogeneity of the response variable. The end result is a rule tree which minimizes RSS. Note there is a bais-variance trade-off with tree based models - we could specify many steps and reduce our RSS error, but that would result in an overfitted model. 
+
+### Tree-based model for TARGET_FLAG
+
+First, we fit a tree-based model to the crash / no crash (TARGET_FLAG) binary variable. The rpart package treats a binary variable as a subset of categorical variables. Therefore, we set the method argument in the tree building function to method = "class". In order to asses our model, we split the dataset into a training set (80%) and test (20%) set. 
+
+```{r}
+#easier with dplyr, rewrite later
+intrain <-createDataPartition(y=ins$TARGET_FLAG,p=0.8,list=FALSE)
+
+ins.train <- ins[intrain,]
+ins.test <- ins[-intrain,]
+
+# See: http://www.statmethods.net/advstats/cart.html
+# https://eight2late.wordpress.com/2016/02/16/a-gentle-introduction-to-decision-trees-using-r/
+
+# grow tree 
+tree.model.flag <- rpart(TARGET_FLAG ~ KIDSDRIV + AGE + HOMEKIDS + YOJ + INCOME + PARENT1 + HOME_VAL + MSTATUS + SEX + EDUCATION + JOB + TRAVTIME + CAR_USE + BLUEBOOK + TIF + CAR_TYPE + RED_CAR + OLDCLAIM + CLM_FREQ + REVOKED + MVR_PTS + CAR_AGE + URBANICITY, method = "class", data = ins)
+```
+
+The CP table for the TARGET_FLAG tree based model shows the optimal prunings based on a complexity parameter. 
+
+```{r}
+printcp(tree.model.flag) # display the results 
+```
+The relative error decreases very little moving from a 5 level tree to a 7 level tree, therefore we should favor the simpler 5-level model. 
+```{r}
+plotcp(tree.model.flag) # visualize cross-validation results 
+#summary(fit) # detailed summary of splits
+```
+
+```{r}
+# plot tree 
+plot(tree.model.flag, uniform = TRUE, main = "Classification Tree")
+text(tree.model.flag, use.n = TRUE, all = TRUE, cex = .8)
+```
+
+
+## Tree-based model for TARGET_AMT
+The dependent variable TARGET_AMT was log-transformed before running the tree-based model. 
+Using the defaul parameters, the independent varaibles did not contain enough information about TARGET_AMT to grow a tree beyond 2 levels. Therefore, the complexity parameter was decreased to 0.005. Despite this, the lowest error was achieved at level 2 so we pruned the tree there. 
+
+```{r}
+ins.train.AMT <- filter(ins.train, TARGET_FLAG == "Yes")
+
+ins.train.AMT$TARGET_AMT <- log(ins.train.AMT$TARGET_AMT)
+
+# grow tree 
+tree.model.flag2 <- rpart(TARGET_AMT ~ KIDSDRIV + AGE + HOMEKIDS + YOJ + INCOME + PARENT1 + HOME_VAL + MSTATUS + SEX + EDUCATION + JOB + TRAVTIME + CAR_USE + BLUEBOOK + TIF + CAR_TYPE + RED_CAR + OLDCLAIM + CLM_FREQ + REVOKED + MVR_PTS + CAR_AGE + URBANICITY, method = "anova", data = ins.train.AMT, control = rpart.control(cp=0.005))
+```
+
+```{r}
+printcp(tree.model.flag2) # display the results 
+plotcp(tree.model.flag2) # visualize cross-validation results 
+#summary(fit2) # detailed summary of splits
+
+# plot tree 
+plot(tree.model.flag2, uniform = TRUE, main = "Classification Tree")
+text(tree.model.flag2, use.n = TRUE, all = TRUE, cex = .8)
+```
+
+```{r}
+# prune the tree 
+tree.model.flag2.prune <- prune(tree.model.flag2, cp = tree.model.flag2$cptable[which.min(tree.model.flag2$cptable[,"xerror"]), "CP"])
+
+printcp(tree.model.flag2.prune)
+plotcp(tree.model.flag2.prune)
+#summary(pfit2) 
+# plot the pruned tree 
+plot(tree.model.flag2.prune, uniform = TRUE, main = "Pruned Classification Tree")
+text(tree.model.flag2.prune, use.n = TRUE, all = TRUE, cex = .8)
+```
+
+This trimmed model shows that the most important variable for predicting TARGET_AMNT is the Bluebook value of the car.   
+
+
+# Model Analysis
+
+## Tree-based model for TARGET_FLAG
+
+```{r}
+```
+
+Confusion Matrix
+```{r}
+rpart_predict <- predict(tree.model.flag, ins.test, type="class")
+rpart_predict.probs <- predict(tree.model.flag, ins.test)
+#confusion matrix
+confusionMatrix(rpart_predict, ins.test$TARGET_FLAG)
+```
+
+
+```{r, eval=FALSE}
+plot(rpart_predict,residuals(tree.model.flag))
+abline(h=0,lty=2,col="grey")
+```
+
+
+```{r}
+plot(predict(tree.model.flag)[,1], residuals(tree.model.flag))
+lines(lowess(predict(tree.model.flag)[,1],residuals(tree.model.flag)),col="black",lwd=2)
+
+qqnorm(residuals(tree.model.flag))
+```
+
+## Tree-based model for TARGET_AMT
+
+The QQ plot of the residuals vs response variable indicates a generally straight line. 
+```{r}
+qqplot(ins.train.AMT$TARGET_AMT, residuals(tree.model.flag2))
+```
+

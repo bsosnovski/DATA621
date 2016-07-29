@@ -1,0 +1,132 @@
+---
+title: "High Correlations in Categoricals"
+output: html_document
+---
+
+```{r warning=FALSE, echo=FALSE, message=FALSE}
+library(stringr)
+library(aod)
+library(ggplot2)
+library(Rcpp)
+library(Amelia)
+library(MASS)
+library(knitr)
+
+ins <- read.csv('insurance_training_data.csv',na.strings=c("","NA"),stringsAsFactors = FALSE)
+colnames(ins)
+
+#########################################
+
+```
+
+# Data Transformation
+
+Converting the money character fields to numeric.
+```{r warning=FALSE, echo=FALSE, message=FALSE}
+blue_book <- unname(sapply(ins$BLUEBOOK, str_replace_all, '[,$]', ''))
+blue_book <- as.numeric(blue_book)
+
+income <- unname(sapply(ins$INCOME, str_replace_all, '[,$]', ''))
+income <- as.numeric(income)
+
+home_val <- unname(sapply(ins$HOME_VAL, str_replace_all, '[,$]', ''))
+home_val <- as.numeric(home_val)
+
+old_claim <- unname(sapply(ins$OLDCLAIM, str_replace_all, '[,$]', ''))
+old_claim <- as.numeric(old_claim)
+
+ins$BLUEBOOK <- blue_book
+ins$INCOME <- income
+ins$HOME_VAL <- home_val
+ins$OLDCLAIM <- old_claim
+
+#ins$TARGET_FLAG <- factor(ins$TARGET_FLAG)
+ins$CAR_TYPE <- factor(ins$CAR_TYPE)
+ins$CAR_USE <- factor(ins$CAR_USE)
+ins$EDUCATION <- factor(ins$EDUCATION)
+ins$JOB <- factor(ins$JOB)
+ins$MSTATUS <- factor(ins$MSTATUS)
+ins$PARENT1 <- factor(ins$PARENT1)
+ins$RED_CAR <- factor(ins$RED_CAR)
+ins$REVOKED <- factor(ins$REVOKED)
+ins$SEX <- factor(ins$SEX)
+ins$URBANICITY <- factor(ins$URBANICITY)
+
+```
+
+# Look at the high correlations, so we can remove many columns:
+
+```{r warning=FALSE}
+cutoff <- nrow(ins)*.75
+# doing na.omit - change this???
+ins.train <- na.omit(ins[1:cutoff,])
+ins.test <- na.omit(ins[(cutoff+1):nrow(ins),])
+
+summary(glm(TARGET_FLAG ~ ., data = ins))
+
+#########################################
+print_accuracy <- function(frmla){
+  fit <- glm(frmla, data=ins.train, family=binomial(link='logit'))
+  # http://www.r-bloggers.com/how-to-perform-a-logistic-regression-in-r/
+  fitted.results <- predict(fit, newdata=ins.test, type='response', na.action = na.pass)
+  fitted.results <- ifelse(fitted.results > 0.5, 1, 0)
+  
+  #head(fitted.results)
+  #head(ins.train$TARGET_FLAG)
+  #head(fitted.results != ins.train$TARGET_FLAG)
+  
+  misClasificError <- mean(fitted.results != ins.train$TARGET_FLAG, na.rm=TRUE)
+  return (1-misClasificError)  
+  
+}
+
+#########################################
+
+print_accuracy(TARGET_FLAG ~ .)
+# All CATEGORICALS:
+
+col_names <- c("CAR_TYPE","CAR_USE","EDUCATION","JOB","MSTATUS","PARENT1","RED_CAR","REVOKED","SEX","URBANICITY")
+
+a1 <- print_accuracy(TARGET_FLAG ~ CAR_TYPE)
+a2 <- print_accuracy(TARGET_FLAG ~ CAR_USE)
+a3 <- print_accuracy(TARGET_FLAG ~ EDUCATION)
+a4 <- print_accuracy(TARGET_FLAG ~ JOB)
+a5 <- print_accuracy(TARGET_FLAG ~ MSTATUS)
+a6 <- print_accuracy(TARGET_FLAG ~ PARENT1)
+a7 <- print_accuracy(TARGET_FLAG ~ RED_CAR)
+a8 <- print_accuracy(TARGET_FLAG ~ REVOKED)
+a9 <- print_accuracy(TARGET_FLAG ~ SEX)
+a10 <- print_accuracy(TARGET_FLAG ~ URBANICITY)
+
+accuracy <- c(a1,a2,a3,a4,a5,a6,a7,a8,a9,a10)
+
+kable(data.frame(col_names, accuracy))
+
+# THAT MAKES IT SEEM LIKE WE HAVE SOME REALLY HIGH CORRELATIONS!!!!!!!
+car_type_to_car_use <- chisq.test(table(ins.train$CAR_TYPE, ins.train$CAR_USE))
+car_type_to_education <- chisq.test(table(ins.train$CAR_TYPE, ins.train$EDUCATION))
+car_type_to_job <- chisq.test(table(ins.train$CAR_TYPE, ins.train$JOB))
+car_type_to_mstatus <- chisq.test(table(ins.train$CAR_TYPE, ins.train$MSTATUS))
+car_type_to_parent1 <- chisq.test(table(ins.train$CAR_TYPE, ins.train$PARENT1))
+car_type_to_red_car <- chisq.test(table(ins.train$CAR_TYPE, ins.train$RED_CAR))
+car_type_to_revoked <- chisq.test(table(ins.train$CAR_TYPE, ins.train$REVOKED))
+car_type_to_sex <- chisq.test(table(ins.train$CAR_TYPE, ins.train$SEX))
+car_type_to_urbancity <- chisq.test(table(ins.train$CAR_TYPE, ins.train$URBANICITY))
+
+p.car_type_to_car_use <- round(car_type_to_car_use$p.value, digits = 4)
+p.car_type_to_education <- round(car_type_to_education$p.value, digits = 4)
+p.car_type_to_job <- round(car_type_to_job$p.value, digits = 4)
+p.car_type_to_mstatus <- round(car_type_to_mstatus$p.value, digits = 4)
+p.car_type_to_parent1 <- round(car_type_to_parent1$p.value, digits = 4)
+p.car_type_to_red_car <- round(car_type_to_red_car$p.value, digits = 4)
+p.car_type_to_revoked <- round(car_type_to_revoked$p.value, digits = 4)
+p.car_type_to_sex <- round(car_type_to_sex$p.value, digits = 4)
+p.car_type_to_urbancity <- round(car_type_to_urbancity$p.value, digits = 4)
+
+all_chi_sq_labels <- c("car_type_to_car_use","car_type_to_education","car_type_to_job","car_type_to_mstatus","car_type_to_parent1","car_type_to_red_car","car_type_to_revoked","car_type_to_sex","car_type_to_urbancity")
+
+all_chi_sq_results <- c(p.car_type_to_car_use,p.car_type_to_education,p.car_type_to_job,p.car_type_to_mstatus,p.car_type_to_parent1,p.car_type_to_red_car,p.car_type_to_revoked,p.car_type_to_sex,p.car_type_to_urbancity)
+
+kable(data.frame(all_chi_sq_labels, all_chi_sq_results))
+
+```

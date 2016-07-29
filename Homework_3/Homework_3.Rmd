@@ -1,0 +1,246 @@
+```{r}
+library(caTools)
+
+data <- read.csv("crime-training-data.csv", sep = ",", stringsAsFactors = FALSE, header = TRUE)
+
+##Data Exploration
+summary(lm(data$target ~ data$zn))
+
+#             Estimate Std. Error t value Pr(>|t|)    
+#(Intercept)  0.598465   0.023369   25.61   <2e-16 ***
+#data$zn     -0.009246   0.000897  -10.31   <2e-16 ***
+
+summary(lm(data$target ~ data$indus))
+
+#             Estimate Std. Error t value Pr(>|t|)    
+#(Intercept) 0.0003814  0.0352467   0.011    0.991    
+#data$indus  0.0442174  0.0027026  16.361   <2e-16 ***
+
+summary(lm(data$target ~ data$chas))
+
+#(Intercept)  0.48037    0.02400   20.02   <2e-16 ***
+#data$chas    0.15599    0.09019    1.73   0.0843 .
+
+summary(lm(data$target ~ data$nox))
+
+#            Estimate Std. Error t value Pr(>|t|)    
+#(Intercept) -1.23513    0.07756  -15.93   <2e-16 ***
+#data$nox     3.11477    0.13693   22.75   <2e-16 ***
+
+summary(lm(data$target ~ data$rm))
+
+#            Estimate Std. Error t value Pr(>|t|)    
+#(Intercept)  1.17280    0.20621   5.688 2.28e-08 ***
+#data$rm     -0.10832    0.03258  -3.325 0.000954 ***
+
+summary(lm(data$target ~ data$age))
+
+#             Estimate Std. Error t value Pr(>|t|)    
+#(Intercept) -0.269825   0.047132  -5.725 1.86e-08 ***
+#data$age     0.011135   0.000637  17.479  < 2e-16 ***
+
+summary(lm(data$target ~ data$dis))
+
+#             Estimate Std. Error t value Pr(>|t|)    
+#(Intercept)  1.049206   0.037600   27.90   <2e-16 ***
+#data$dis    -0.146953   0.008663  -16.96   <2e-16 ***
+
+summary(lm(data$target ~ data$rad))
+
+#            Estimate Std. Error t value Pr(>|t|)    
+#(Intercept) 0.146524   0.026825   5.462 7.68e-08 ***
+#data$rad    0.036190   0.002081  17.388  < 2e-16 ***
+
+lm(formula = data$target ~ data$tax)
+
+#              Estimate Std. Error t value Pr(>|t|)    
+#(Intercept) -0.2545161  0.0484694  -5.251 2.31e-07 ***
+#data$tax     0.0018216  0.0001095  16.631  < 2e-16 ***
+
+summary(lm(formula = data$target ~ data$ptratio))
+
+#             Estimate Std. Error t value Pr(>|t|)    
+#(Intercept)  -0.55998    0.18969  -2.952  0.00332 ** 
+#data$ptratio  0.05715    0.01024   5.582 4.05e-08 ***
+
+summary(lm(formula = data$target ~ data$black))
+
+#             Estimate Std. Error t value Pr(>|t|)    
+#(Intercept)  1.182192   0.087739  13.474  < 2e-16 ***
+#data$black  -0.001934   0.000238  -8.126 4.06e-15 ***
+
+summary(lm(formula = data$target ~ data$lstat))
+
+#            Estimate Std. Error t value Pr(>|t|)    
+#(Intercept) 0.073834   0.041855   1.764   0.0784 .  
+#data$lstat  0.033059   0.002889  11.443   <2e-16 ***
+
+summary(lm(formula = data$target ~ data$medv))
+
+#             Estimate Std. Error t value Pr(>|t|)    
+#(Intercept)  0.822446   0.059071  13.923  < 2e-16 ***
+#data$medv   -0.014654   0.002421  -6.054 2.92e-09 ***
+
+#There are some variables that are very large, some of the variables are very small. You do not want any kind of pattern to given the model any hints, so the function below will take all of the data
+#ane put it all on the same scale, from 0 - 100. Keeps all the variables on the same playing field
+
+normalize <- function(x)
+{
+ return((x - min(x)) / (max(x) - min(x)) * 100)
+}
+
+target <- data$target
+data_n <- as.data.frame(lapply(data[1:13], normalize))
+data <- data_n
+
+##Model 1
+
+data <- cbind(data, target)
+data$target <- as.factor(data$target)
+
+model <- glm(target ~ ., data = data, family = binomial)
+predict <- round(predict(model, type = 'response'),4)
+
+result <- predict
+
+for (i in 1:NROW(predict))
+{ 
+ if(predict[i] > .50)
+  {
+   result[i] <- 1
+  } else
+  {
+   result[i]  <- 0
+  }
+}
+
+final <- as.data.frame(cbind(predict, result))
+table(predicted = final$result, actual = data$target) 
+
+#         actual
+#predicted   0   1
+#        0 222  20
+#        1  15 209
+
+##Model 2
+
+data2 <- data[,c(1,4,6,7,8,9,10,11,13,14)]
+
+model2 <- glm(target ~ ., data = data2, family = binomial)
+predict2 <- round(predict(model2, type = 'response'),4)
+
+result2 <- predict2
+
+for (i in 1:NROW(predict2))
+{ 
+ if(predict2[i] > .50)
+  {
+   result2[i] <- 1
+  } else
+  {
+   result2[i]  <- 0
+  }
+}
+
+final2 <- as.data.frame(cbind(predict2, result2))
+table(predicted = final2$result, actual = data2$target) 
+
+#         actual
+#predicted   0   1
+#        0 217  20
+#        1  20 209
+
+##Model 3 (Backwards and Forwards)
+
+fullmod <- glm(target~., data = data, family=binomial)
+backwards <- step(fullmod, trace = 0)
+
+#target ~ zn + indus + chas + nox + age + dis + rad + tax + ptratio + black + medv
+
+nothing <- glm(target ~ 1, data = data, family = binomial)
+forwards <- step(nothing, scope = list(lower=formula(nothing), upper=formula(fullmod)), direction = "forward", trace = 0)
+
+#target ~ nox + rad + tax + ptratio + black + medv + age + dis + zn + lstat
+
+#BACKWARDS
+
+data3a <- data[,-c(5,12)]
+
+model3a <- glm(target ~ zn + indus + chas + nox + age + dis + rad + tax + ptratio + black + medv, data = data3a, family = binomial)
+predict3a <- round(predict(model3a, type = 'response'),4)
+
+result3a <- predict3a
+
+for (i in 1:NROW(predict3a))
+{ 
+ if(predict3a[i] > .50)
+  {
+   result3a[i] <- 1
+  } else
+  {
+   result3a[i]  <- 0
+  }
+}
+
+final3a <- as.data.frame(cbind(predict3a, result3a))
+t <- table(actual = data3a$target, predicted = final3a$result3a)
+
+#         actual
+#predicted   0   1
+#        0 221  19
+#        1  16 210
+
+##FORWARDS
+
+data3b <- data[,-c(2,3,5)]
+
+model3b <- glm(target ~ nox + rad + tax + ptratio + black + medv + age + dis + zn + lstat, data = data3b, family = binomial)
+predict3b <- round(predict(model3b, type = 'response'),4)
+
+result3b <- predict3b
+
+for (i in 1:NROW(predict3b))
+{ 
+ if(predict3b[i] > .50)
+  {
+   result3b[i] <- 1
+  } else
+  {
+   result3b[i]  <- 0
+  }
+}
+
+final3b <- as.data.frame(cbind(predict3b, result3b))
+table(predicted = final3b$result, actual = data3b$target)
+
+#         actual
+#predicted   0   1
+#        0 217  22
+#        1  20 207
+
+
+##################################################################################################################################################################
+
+
+#         predicted
+#actual   0       1
+#     0 221(TP)  16(FN)
+#     1  19(FP) 210(TN)
+
+accuracy <- (t[1] + t[4])/ sum(t)
+ER <- (t[2] + t[3]) / sum(t)
+precision <- t[1] / (t[1] + t[2])
+sensitivity <- t[1] / (t[1] + t[3])
+specificity <- t[4] / (t[4] + t[2])
+
+fscore <- (2 * precision * sensitivity)/(precision + sensitivity)
+
+#rc <- roc(data3a$target, final3a$predict3a)
+
+#AUC .9746
+
+####################################################################################################################################################################
+
+#target = -.059091 * zn - .018331 * indus + .012180 * chas + .233618 * nox + .031034 * age + .077361 * dis + .142713 * rad - .033496 * tax + .036277 * ptratio -.051296 * black + .053850 * medv - 11.771381
+
+```

@@ -1,0 +1,92 @@
+---
+title: "HW3 Planning Document"
+date: "June 21, 2016"
+output: html_document
+---
+##Due 7/3/16
+
+The purpose of this document is to plan and organize our submission for HW3. Below are the four sections. Please either add any work to this document directly to the appropriate section, or provide a link to the document that your work exists (the former is preferable).
+
+Try to explain reasoning for your different decisions as much as you can. That helps communicate to the rest of the group your thought process, will make it easier to resolve potential different choices, and will lessen the likelihood we lose any points on the final document.
+
+###Part I: Data Exploration
+#### Target finish date: 6/23
+```{r message=FALSE}
+require(PerformanceAnalytics)
+
+crime <- read.csv('crime-training-data.csv', na.strings=c("","NA"))
+```
+
+```{r}
+sapply(crime, function(x) sum(is.na(x)))
+```
+There does not appear to be any missing data.
+
+```{r}
+table(crime$target)
+```
+The binary response variable is evenly distributed
+
+
+Plot the density function for each variable
+```{r}
+for ( column in colnames(crime)) { plot(density(crime[,column]), main = column)}
+```
+
+
+Chart with scatterplots, histograms, correlations, kernel density overlays, and significance astericks.
+```{r warning=FALSE}
+chart.Correlation(crime)
+```  
+
+The preceding chart shows that every variable other than adjancency to the Charles river has correlation significance level of .001 with our response variable, "target". This graph also shows that multicollinearity is something that will have to be dealt with in this model. Principal component analysis could be useful to mitigate this.
+
+The fact that the predictor variables show a high degree of correlation with each other makes intuitive sense. Most variables relate to a notion of "desirability", which would hypothetically have significant impacts on other variables. 
+
+For instance, one might suppose that a high degree of industrial real estate in a neighborhood would have a negative effect on real estate values. One might than hypothesize that a neighborhood with lower median real estate values would be more highly susceptible to higher than usual crime.
+
+At least in the provided dataset, there are strong correlations that bear out both of those hypotheses. "Indus", which describes the proportion of non-retail businesses in a neighborhood, is negative correlated by a factor of -.49617 with "Medv", the median value of owner occupied homes; "Medv" is negative correlated (-.27) with higher than normal crime rates. 
+
+###Part II: Data Preparation
+#### Target finish date: 6/26
+
+###Part III: Build Models
+#### Target finish date: 6/28
+
+
+Here is a model with all predictors (and no transformations) included, and Variance Inflation (VIF) factor applied. VIF measures the inflation of variance on predictors in a model due to multicollinearity. A very general guideline is that VIFs of greater than 4 should be adressed.  
+
+```{r}
+library(car)
+
+crime.model <- glm(target ~ ., data = crime, family=binomial())
+summary(crime.model)
+vif(crime.model)
+```  
+
+There are several predictors with VIF values above 4.
+
+We can use the step() function to apply stepwise selection automatically, and investigate the VIF.
+
+```{r}
+step_model <- step(crime.model)
+summary(step_model)
+vif(step_model)
+```
+
+Now there is only one predictor with a VIF of higher than 4. We can remove that variable:
+
+```{r}
+step_model_2 <- glm(target ~ zn + indus + chas + age + dis + rad + 
+                      tax + ptratio + black + medv, data = crime, family=binomial())
+
+summary(step_model_2)
+
+vif(step_model_2)
+
+```
+
+And now all the VIFs are below 4. However, the AIC score is quite a bit lower, so this may not be a worthwhile tradeoff.
+
+###Part IV: Select Models
+#### Target finish date: 6/30

@@ -1,0 +1,358 @@
+---
+title: "Wine"
+author: Daniel Brooks (daniel.brooks@spsmail.cuny.edu), Daniel Fanelli (daniel.fanelli@spsmail.cuny.edu),
+  Christopher Fenton (christopher.fenton@spsmail.cuny.edu), James Hamski (james.hamski@spsmail.cuny.edu),
+  Youqing Xiang (youqing.xiang@spsmail.cuny.edu)
+date: "7/11/2016"
+output: pdf_document
+---
+
+![Wine Analysis.](wine.png)
+
+```{r warning=FALSE, echo=FALSE, message=FALSE}
+library(stringr)
+library(knitr)
+library(sandwich)
+library(MASS)
+library(ROCR)
+library(pROC)
+library(ggplot2)
+library(pscl)
+library(boot)
+library(gridExtra)
+library(Amelia)
+library(car)
+library(plyr)
+library(psych)
+library(reshape2)
+wine <- read.csv('wine-training-data.csv', stringsAsFactors = FALSE)
+```
+
+The purpose of this analysis is to develop models to predict the number of cases of wine samples a large wine manufacturer show offer to maximize wine sales.
+
+Our data shows the chemical properties of commercially available wines as well as factors such as STARS ratings.
+
+Our response variable is the number of sample cases purchased by distribution companies after sampling, a variable that has a direct correlation to overall wine sales. These cases are used to provide tasting samples to restaurants and wine stores around the United States.  The more sample cases purchased, the more likely is a wine to be sold at a high end restaurant. 
+
+If the wine manufacturer can predict the number of cases, then that manufacturer will be able to adjust their wine offering to maximize sales.
+
+Our training dataset includes information on `r nrow(wine)` wines. Each wine has `r ncol(wine)-2` potential predictor variables, and 1 response variable. The response variable is "TARGET", which is the number of cases purchased.
+
+# 1) Data Exploration
+
+A basic analysis of the numerical variables:
+
+* Our histograms show normally distributed variables
+* Our Box-Plots seem to have large amounts of instances outside of the 2nd and 3rd quartiles.  We will examine this further.
+
+**Figure 1.1 WINE Data Histograms**  
+```{r warning=FALSE, echo=FALSE, message=FALSE, eval=TRUE}
+wine_no_indexes <- wine[,-c(1)]
+d <- melt(wine_no_indexes[,sapply(wine_no_indexes, is.numeric)])
+
+ggplot(d,aes(x = value)) + 
+    facet_wrap(~variable,scales = "free") + 
+    geom_histogram()
+```
+
+**Figure 1.2 WINE Data BoxPlots**  
+```{r warning=FALSE, echo=FALSE, message=FALSE, eval=TRUE}
+ggplot(d, aes(variable, value)) + 
+  facet_wrap(~variable,scales = "free") + 
+  geom_boxplot()
+```
+
+### Explore NA's:
+
+The below table shows a summary of the NA values in the data.  Only STARS had an NA frequency higher than 10%, so this was a concern.  All NA values were thus replaced with samples from their respective collections, except for STARS, which required further analysis.
+
+```{r warning=FALSE, echo=FALSE, message=FALSE}
+not_na_count <- sapply(wine, function(y) sum(length(which(!is.na(y)))))
+na_count <- sapply(wine, function(y) sum(length(which(is.na(y)))))
+na_pct <- na_count / (na_count + not_na_count)
+
+na_summary_df <- data.frame(not_na_count,na_count,na_pct)
+
+missmap(wine, main = "Missing Values Before (Non-STARS) Replacement")
+
+kable(na_summary_df)
+
+# doing this because whole data set would be gone otherwise, show that in numbers!!!!!!!!!!!!!
+wine$ResidualSugar[is.na(wine$ResidualSugar)] <- sample(wine$ResidualSugar[!is.na(wine$ResidualSugar)])
+wine$Chlorides[is.na(wine$Chlorides)] <- sample(wine$Chlorides[!is.na(wine$Chlorides)])
+wine$FreeSulfurDioxide[is.na(wine$FreeSulfurDioxide)] <- sample(wine$FreeSulfurDioxide[!is.na(wine$FreeSulfurDioxide)])
+wine$TotalSulfurDioxide[is.na(wine$TotalSulfurDioxide)] <- sample(wine$TotalSulfurDioxide[!is.na(wine$TotalSulfurDioxide)])
+wine$pH[is.na(wine$pH)] <- sample(wine$pH[!is.na(wine$pH)])
+wine$Sulphates[is.na(wine$Sulphates)] <- sample(wine$Sulphates[!is.na(wine$Sulphates)])
+wine$Alcohol[is.na(wine$Alcohol)] <- sample(wine$Alcohol[!is.na(wine$Alcohol)])
+
+missmap(wine, main = "Missing Values After (Non-STARS) Replacement")
+
+```
+
+### Corrlation and Covariance:
+
+There does not seem to be much correlation, much less any multi-collinearity issues:
+
+```{r warning=FALSE, echo=FALSE, message=FALSE, eval=TRUE}
+library(corrplot)
+numeric_cols <- sapply(wine, is.numeric)
+M <- cor(wine[ , numeric_cols])
+corrplot(M, method="circle")
+```
+
+Summary of Wine Data Correlation:
+
+```{r warning=FALSE, echo=FALSE, message=FALSE, eval=TRUE}
+summary(cor(wine[ , numeric_cols], use="complete.obs"))
+```
+
+Scatterplot of Wine Data:
+
+```{r warning=FALSE, echo=FALSE, message=FALSE, eval=TRUE}
+scatterplotMatrix(wine[,-c(1)])
+```
+
+Summary of Wine Data Covariance:
+
+```{r warning=FALSE, echo=FALSE, message=FALSE, eval=TRUE}
+summary(cov(wine[ , numeric_cols], use="complete.obs"))
+```
+
+# 2) Data Preparation
+
+### Looking for Patterns in the 'STARS' NA Values:
+
+Next, due to such a high NA percent ***(`r format(100 * (sum(is.na(wine$STARS))/nrow(wine)), digits=2, nsmall=2)`%)***
+
+Note that there are no ZEROS in the STARS field, 1 is the min:
+
+```{r warning=FALSE, echo=FALSE, message=FALSE}
+min(wine$STARS[!is.na(wine$STARS)])
+```
+
+Graphically, it seems that a blank stars field is analagous to a ZERO (see chart below).
+
+```{r warning=FALSE, echo=FALSE, message=FALSE}
+wine$STARS[is.na(wine$STARS)] <- 0
+
+wine <- within(wine, {
+    LabelAppeal <- factor(LabelAppeal)
+    AcidIndex <- factor(AcidIndex)
+    STARS <- factor(STARS)
+})
+
+m0 <- mean(wine$TARGET[wine$STARS == 0])
+m1 <- mean(wine$TARGET[wine$STARS == 1])
+m2 <- mean(wine$TARGET[wine$STARS == 2])
+m3 <- mean(wine$TARGET[wine$STARS == 3])
+m4 <- mean(wine$TARGET[wine$STARS == 4])
+
+stars_summary_df <- data.frame(cbind(num_stars = c(0,1,2,3,4), mean_target = c(m0,m1,m2,m3,m4)))
+stars_summary_df
+
+ggplot(stars_summary_df, aes(num_stars, mean_target)) + geom_point(shape=1, size=5) + geom_smooth(method=lm,se=FALSE)
+```
+
+Though this calculation may be imperfect at the moment, we will show later that the calculation is to be discarded, and thus not worth figuring out a closer approximation for NA's replacement in the ***STARS*** field.
+
+After the fill, we have what looks like a ***Zero-Inflated*** model on our hands.
+
+```{r warning=FALSE, echo=FALSE, message=FALSE}
+ggplot(wine, aes(TARGET, fill = STARS)) + geom_histogram(binwidth=1, bins = 8,  position="dodge")
+```
+
+# 3) Build Models
+
+We will build 4 data sets:
+
+* TRAINING set where zeros were substituted for NAs in the SCORE column.
+* TRAINING set where zeros were substituted for NA
+
+Simple Step Selection will be used for attribute selection, and we will build 3 models for both sets, yielding a total of 6 models:
+
+```{r warning=FALSE, echo=FALSE, message=FALSE}
+wine.zeros <- wine
+wine.nozeros <- wine[wine$STARS != 0,]
+
+cutoff.zeros <- nrow(wine.zeros)*.75
+wine.zeros.train <- wine.zeros[1:cutoff.zeros,]
+wine.zeros.test <- wine.zeros[(cutoff.zeros+1):nrow(wine.zeros),]
+
+cutoff.nozeros <- nrow(wine.nozeros)*.75
+wine.nozeros.train <- wine.nozeros[1:cutoff.nozeros,]
+wine.nozeros.test <- wine.nozeros[(cutoff.nozeros+1):nrow(wine.nozeros),]
+```
+
+* ***A Poisson GLM with SCORE: "Zeros-for-NAs"***
+* ***A Poisson GLM with SCORE: "NAs Removed"***
+* ***A Negative Binomial GLM with SCORE: "Zeros-for-NAs"***
+* ***A Negative Binomial GLM with SCORE: "NAs Removed"***
+* ***A Multiple Linear Regression Model with SCORE: "Zeros-for-NAs"***
+* ***A Multiple Linear Regression Model with SCORE: "NAs Removed"***
+
+Summaries for these Models are below:
+
+(To show our point regarding coefficients, we will show summaries for the 2 Negative Binomial Distributions).  Summaries of all 6 models, however, are located in the appendix.
+
+```{r name="POISSON GLM ZEROS", message=FALSE, warning=FALSE, echo=FALSE, eval=TRUE}
+fit.poisson.zeros <- step(glm(TARGET ~ . , family = poisson, data = wine.zeros.train), trace = FALSE)
+#summary(fit.poisson.zeros)
+```
+
+```{r name="POISSON GLM ZEROS", message=FALSE, warning=FALSE, echo=FALSE, eval=TRUE}
+fit.poisson.nozeros <- step(glm(TARGET ~ . , family = poisson, data = wine.nozeros.train), trace = FALSE)
+#summary(fit.poisson.nozeros)
+```
+
+```{r name="NB GLM ZEROS", message=FALSE, warning=FALSE, echo=TRUE, eval=TRUE}
+fit.nb.zeros <- step(glm.nb(TARGET ~ . , data = wine.zeros.train), trace = FALSE)
+summary(fit.nb.zeros)
+```
+
+```{r name="NB GLM NO ZEROS", message=FALSE, warning=FALSE, echo=TRUE, eval=TRUE}
+fit.nb.nozeros <- step(glm.nb(TARGET ~ . , data = wine.nozeros.train), trace = FALSE)
+summary(fit.nb.nozeros)
+```
+
+```{r name="MLR GLM ZEROS", message=FALSE, warning=FALSE, echo=FALSE, eval=TRUE}
+fit.mlr.zeros <- step(lm(TARGET ~ ., data = wine.zeros.train), trace = FALSE)
+#summary(fit.mlr.zeros)
+```
+
+```{r name="MLR GLM NO ZEROS", message=FALSE, warning=FALSE, echo=FALSE, eval=TRUE}
+fit.mlr.nozeros <- step(lm(TARGET ~ ., data = wine.nozeros.train), trace = FALSE)
+#summary(fit.mlr.nozeros)
+```
+
+### Some Notes on the Models
+
+* Though the 5th and 6th models are not GLMs, and thus should be used with normal distributions, we need to remember that the TARGET variable did have a normal distribution before the ZEROS replaced the NAs in the SCORE column.
+
+### The Output of these 6 Models:
+
+```{r name="CALC_SD_and_SE", message=FALSE, warning=FALSE, echo=FALSE}
+calc_sd <- function(fit, data){
+  prediction <- predict(fit, newdata=data, type='response')
+  difference <- (prediction - mean(data$TARGET))
+  difference_squared <- difference * difference
+  return (mean(sqrt(difference_squared)))
+}
+
+calc_se <- function(fit, data){
+  prediction <- predict(fit, newdata=data, type='response')
+  difference <- (prediction - data$TARGET)
+  difference_squared <- difference * difference
+  return (mean(sqrt(difference_squared)))
+}
+```
+
+```{r name="SD_SE_AIC_BIC", message=FALSE, warning=FALSE, echo=FALSE, eval=TRUE}
+##################################################################
+# SD Calcs:
+##################################################################
+sd.poisson.nozeros <- calc_sd(fit.poisson.nozeros, wine.nozeros.test)
+sd.nb.nozeros <- calc_sd(fit.nb.nozeros, wine.nozeros.test)
+sd.mlr.nozeros <- calc_sd(fit.mlr.nozeros, wine.nozeros.test)
+
+sd.poisson.zeros <- calc_sd(fit.poisson.zeros, wine.zeros.test)
+sd.nb.zeros <- calc_sd(fit.nb.zeros, wine.zeros.test)
+sd.mlr.zeros <- calc_sd(fit.mlr.zeros, wine.zeros.test)
+
+SD <- format(c(sd.poisson.nozeros, sd.nb.nozeros, sd.mlr.nozeros, sd.poisson.zeros, sd.nb.zeros, sd.mlr.zeros), digits=2, nsmall=2)
+
+##################################################################
+# SE Calcs:
+##################################################################
+se.poisson.nozeros <- calc_se(fit.poisson.nozeros, wine.nozeros.test)
+se.nb.nozeros <- calc_se(fit.nb.nozeros, wine.nozeros.test)
+se.mlr.nozeros <- calc_se(fit.mlr.nozeros, wine.nozeros.test)
+
+se.poisson.zeros <- calc_se(fit.poisson.zeros, wine.zeros.test)
+se.nb.zeros <- calc_se(fit.nb.zeros, wine.zeros.test)
+se.mlr.zeros <- calc_se(fit.mlr.zeros, wine.zeros.test)
+
+SE <- format(c(se.poisson.nozeros, se.nb.nozeros, se.mlr.nozeros, se.poisson.zeros, se.nb.zeros, se.mlr.zeros), digits=2, nsmall=2)
+
+##################################################################
+# AIC Calcs:
+##################################################################
+AIC <- format(c(AIC(fit.poisson.nozeros), AIC(fit.nb.nozeros), AIC(fit.mlr.nozeros), AIC(fit.poisson.zeros), AIC(fit.nb.zeros), AIC(fit.mlr.zeros)), digits=2, nsmall=2)
+
+##################################################################
+# BIC Calcs:
+##################################################################
+BIC <- format(c(BIC(fit.poisson.nozeros),BIC(fit.nb.nozeros),BIC(fit.mlr.nozeros),BIC(fit.poisson.zeros),BIC(fit.nb.zeros),BIC(fit.mlr.zeros)), digits=2, nsmall=2)
+
+##################################################################
+# MDL Co-efficients:
+##################################################################
+all_fits <- c(fit.poisson.nozeros,fit.nb.nozeros,fit.mlr.nozeros,fit.poisson.zeros,fit.nb.zeros,fit.mlr.zeros)
+
+```
+
+```{r name="MLR GLM NO ZEROS", message=FALSE, warning=FALSE, echo=FALSE, eval=TRUE}
+Model <- c("Poisson no 0s", "Poisson w/ 0s", "Negative Binomial no 0s", "Negative Binomial w/0s", "Multiple Linear Regression no 0s", "Multiple Linear Regression w/ 0s")
+kable(cbind(Model, SE, SD, AIC, BIC))
+```
+
+# 4) Select Models
+
+Before selecting a model, a quick explanation of why the "no ZEROs" models performed better:
+
+One might think that either removing or keeping a value (such as the "Perfect-Graphical-Fit" Zeros-for-NAs) would possibly ***improve*** a model's accuracy, but at least ***maintain*** it. In this case, however, we saw a relatively large drop in performance of the models due to the inclusion of this attribute.  Why would this be?
+
+One probably explanation is that true customers that actually ***BOUGHT*** the product took the time to fill their surveys out accurately.  Customers who didn't purchase the product (with less stake in the game and/or lack of knowledge of the product) simply did not have such useful data.  Due to this, the Zero-Inflated model is basically gone, and a linear model with a normal distribution again seems reasonable.
+
+We know that Poisson Regression is actually a special case of Negative Binomial Regression (where the mean and the variance are equal), but in this case, the Poisson Regression did not yield more accurate results. We know that if there is overdispersion in the Poisson, then the estimates from the Poisson regression model are consistent but inefficient.  It seems from our Box Plots in Figure 1.2 that these overdispersions may have occurred.
+
+Based on this and the above results table, it seems that the ***Negative Binomial no 0s*** is our winner.
+
+"[When comparing models fitted by maximum likelihood to the same data, the smaller the AIC or BIC, the better the fit.](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/AIC.html)""
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=TRUE}
+file_name <- "hw5_results.csv"
+```
+
+Our results have been written to ***`r file_name`***, and a sampling is shown below:
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=TRUE}
+final_prediction <- predict(fit.nb.nozeros, newdata=wine.nozeros.test, type='response')
+head(final_prediction, n=20)
+write.csv(final_prediction, file = file_name, fileEncoding = "UTF-8", na = "NA")
+```
+
+
+----------------------------------------------------
+
+TEACHER NOTES:
+- HW1: 
+	"no discussion of co-efficients"
+	"Where is your regression output and  discussion of the coefficients?"
+	"Any multi-collinearity issues?"
+- HW2:
+- HW3: 
+	"What is the meaning of these summary statistics?"	
+	"Since you used the "probit" link function here, your interpretation of the model is incorrect. You are not looking at log odds (logit), but rather in terms of standard deviations!!"
+	"This is not a confusion matrix!" (4.1 ... but that IS the performance grid I want to use!!!!!)
+- HW4:
+	"DATA PREPARATION: 32/35?? - Good ?job ?here. How did you deal with the outliers? Did any variables require transformations??????????????"
+	not clear why you used the "probit" link function when you were instructed to use the "logit" link function.??????????????? For all of your models, there was no discussion of your model coefficient estimates.??????????????
+	be sure to provide a summary table comparing the key metrics of interest for each model; also, plot the ROC curves on one plot. None of your prediction models satisfied the OLS assumptions...what did you do to correct for this?
+
+USE A STARS_WAS_NULL????
+
+# Appendix
+
+code code code...
+
+### All 6 Model Summaries:
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=TRUE}
+summary(fit.poisson.nozeros)
+summary(fit.nb.nozeros)
+summary(fit.mlr.nozeros)
+summary(fit.poisson.zeros)
+summary(fit.nb.zeros)
+summary(fit.mlr.zeros)
+```
